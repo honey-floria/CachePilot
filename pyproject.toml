@@ -7,7 +7,7 @@ name = "cachepilot"
 version = "0.1.0"
 description = "CPU-first control-plane skeleton for CachePilot"
 readme = "README.md"
-requires-python = "==3.11.13"
+requires-python = "==3.13.15"
 license = { text = "Apache-2.0" }
 authors = [{ name = "CachePilot contributors" }]
 dependencies = []
@@ -29,6 +29,6 @@ testpaths = ["tests"]
 addopts = "-ra"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 88
 extend-exclude = ["notebooks"]

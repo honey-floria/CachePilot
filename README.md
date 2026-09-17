@@ -72,7 +72,7 @@ CPU 确定性模拟
 
 ## 骨架安装与验收
 
-项目固定使用 Python `3.11.13`。在全新 CPU 环境中执行：
+项目固定使用 Python `3.13.15`。在全新 CPU 环境中执行：
 
 ```bash
 python3 -m pip install -r requirements/requirements-cpu.txt

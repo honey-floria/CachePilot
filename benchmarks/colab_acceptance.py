@@ -24,7 +24,7 @@ def _probe(url: str) -> tuple[int, str]:
 
 
 def main() -> int:
-    expected = (3, 11, 13)
+    expected = (3, 13, 15)
     actual = sys.version_info[:3]
     if actual != expected:
         print(

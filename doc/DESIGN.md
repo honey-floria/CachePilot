@@ -67,7 +67,7 @@ Phase 0–2 是当前项目边界。单卡是必须完成层；Phase 2 必须先
 
 ### 3.1 仓库骨架与环境入口
 
-仓库骨架阶段固定 Python `3.11.13`，CPU 安装入口为
+仓库骨架阶段固定 Python `3.13.15`，CPU 安装入口为
 `requirements/requirements-cpu.txt`，静态检查和测试入口分别为
 `make lint` 与 `make test`，组合验收入口为 `make check`。当前
 `cachepilot.runtime.empty_service` 只提供 `/healthz`、`/readyz` 和 `/metrics`
@@ -517,7 +517,7 @@ estimated_cost, policy_versions, terminal_state
 
 | 领域 | Phase 0–1 | Phase 2 |
 |---|---|---|
-| 语言 | Python 3.11+ | Python 3.11+ |
+| 语言 | Python 3.13.15 | Python 3.13.15 |
 | API | FastAPI、SSE | 内部 HTTP 或 gRPC worker transport |
 | 执行器 | SimExecutor、PyTorch、vLLM | 两个独立 vLLM worker；P/D adapter 可选 |
 | 元数据 | 内存/SQLite | Worker Directory 内存状态与持久化实验记录 |

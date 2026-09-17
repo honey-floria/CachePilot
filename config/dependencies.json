@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "python_version": "3.11.13",
+  "python_version": "3.13.15",
   "profiles": {
     "phase0_cpu": {
       "platform": "macOS or Linux CPU",
-      "python": "3.11.13",
+      "python": "3.13.15",
       "torch": null,
       "transformers": null,
       "vllm": null,
@@ -12,7 +12,7 @@
     },
     "torch_executor": {
       "platform": "Linux x86_64 with a PyTorch-supported NVIDIA GPU",
-      "python": "3.11.13",
+      "python": "3.13.15",
       "torch": "2.11.0",
       "transformers": "5.5.3",
       "tokenizers": "0.23.0",
@@ -23,7 +23,7 @@
     },
     "vllm_executor": {
       "platform": "Linux x86_64 with a vLLM-supported NVIDIA GPU",
-      "python": "3.11.13",
+      "python": "3.13.15",
       "torch": "2.11.0",
       "torchaudio": "2.11.0",
       "torchvision": "0.26.0",

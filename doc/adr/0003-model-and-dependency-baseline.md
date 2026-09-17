@@ -1,6 +1,6 @@
 # ADR-0003：模型与运行时依赖基线
 
-- 状态：已接受
+- 状态：已接受（Python 基线已由 ADR-0004 修订）
 - 日期：2026-09-18
 - 依赖：ADR-0001、ADR-0002
 
@@ -73,13 +73,13 @@ initial_service_context_limit <= model_max_context_tokens
 
 ## Python、PyTorch 与 vLLM 兼容矩阵
 
-选定的 Python 版本为 `3.11.13`。所有正式开发、测试和实验环境必须使用 Python 3.11 系列中的这个精确版本，直到依赖升级 ADR 替换它。
+选定的 Python 版本为 `3.13.15`。所有正式开发、测试和实验环境必须使用 Python 3.13 系列中的这个精确版本，直到依赖升级 ADR 替换它。Python 基线迁移记录见 ADR-0004。
 
 | Profile | Platform | Python | PyTorch | Transformers | vLLM | 状态 |
 |---|---|---:|---:|---:|---:|---|
-| Phase 0 CPU | macOS/Linux CPU | 3.11.13 | 不安装 | 不安装 | 不安装 | 已选择；仓库骨架阶段验证 |
-| TorchExecutor | Linux x86_64 + NVIDIA GPU | 3.11.13 | 2.11.0 | 5.5.3 | 不安装 | 元数据兼容；GPU 实测待完成 |
-| VllmExecutor | Linux x86_64 + NVIDIA GPU | 3.11.13 | 2.11.0 | 5.5.3 | 0.24.0 | 元数据兼容；GPU 实测待完成 |
+| Phase 0 CPU | macOS/Linux CPU | 3.13.15 | 不安装 | 不安装 | 不安装 | 已选择；仓库骨架阶段验证 |
+| TorchExecutor | Linux x86_64 + NVIDIA GPU | 3.13.15 | 2.11.0 | 5.5.3 | 不安装 | 元数据兼容；GPU 实测待完成 |
+| VllmExecutor | Linux x86_64 + NVIDIA GPU | 3.13.15 | 2.11.0 | 5.5.3 | 0.24.0 | 元数据兼容；GPU 实测待完成 |
 
 补充固定版本：
 
@@ -114,7 +114,7 @@ CachePilot 不使用这些范围作为安装配置，而是在范围内选择精
 
 ## 安装与锁定策略
 
-- `.python-version` 固定 Python 3.11.13；
+- `.python-version` 固定 Python 3.13.15；
 - `config/model.json` 固定模型、tokenizer 和许可证来源；
 - `config/dependencies.json` 是运行时组合的机器可读基线；
 - `requirements/constraints-gpu.txt` 固定 GPU profile 的直接依赖；

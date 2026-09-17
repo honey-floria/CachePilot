@@ -66,7 +66,7 @@ class DependencyBaselineTests(unittest.TestCase):
         profiles = {profile.name: profile for profile in baseline.profiles}
         vllm = profiles["vllm_executor"]
 
-        self.assertEqual("3.11.13", baseline.python_version)
+        self.assertEqual("3.13.15", baseline.python_version)
         self.assertEqual("2.11.0", vllm.torch)
         self.assertEqual("5.5.3", vllm.transformers)
         self.assertEqual("0.24.0", vllm.vllm)
