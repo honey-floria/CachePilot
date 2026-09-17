@@ -19,7 +19,7 @@ make check
 python benchmarks/colab_acceptance.py
 ```
 
-通过标志为：
+Google Colab 实测验收结果为：
 
 ```text
 COLAB_ACCEPTANCE=PASS
@@ -29,12 +29,18 @@ COLAB_ACCEPTANCE=PASS
 - /metrics: 200
 ```
 
+以上输出已在 Google Colab 按照 notebook 中的步骤实际取得，表示仓库骨架的
+CPU 安装、测试和空服务探活验收通过。这里的三个 HTTP `200` 仅说明对应端点
+能够正常响应：`/healthz` 表示服务存活，`/readyz` 表示服务已就绪，`/metrics`
+表示监控指标端点可访问。
+
 Notebook 已固定仓库 clone、CPU 安装和上述脚本调用，可在 Google Colab 逐格执行。
 脚本会拒绝非 `3.13.15` 解释器，防止将其他运行时的结果混入基线。
 
 ## 本地证据与限制
 
-当前开发机不是 Python `3.13.15`，因此不能伪造 Python 基线通过；
+当前开发机不是 Python `3.13.15`，因此不能伪造 Python 基线通过；Colab 验收结果
+以 notebook/脚本输出为准。开发机上的
 `python3 benchmarks/colab_acceptance.py` 会明确报告版本不匹配。契约、包导入和
 其余 CPU 测试以 `python3 -m unittest discover -s tests -v` 验证通过（40 项中
 39 项通过，1 项因当前沙箱禁止监听本地端口而跳过）；在允许本地 socket 的环境中，

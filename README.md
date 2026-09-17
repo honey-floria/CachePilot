@@ -4,7 +4,7 @@ CachePilot 是一个面向多租户混合负载的 LLM 推理服务控制层。�
 
 CachePilot 不重新实现 CUDA kernel、attention、模型并行或执行器内部的连续批处理。模型执行和物理 KV 分配由推理引擎负责；CachePilot 管理进入执行器之前的策略和跨 Worker 的控制逻辑。
 
-> **当前状态：仓库骨架已建立。** 当前提交提供可安装的 CPU 优先包、严格契约测试、标准目录和仅用于探活的空服务；尚未实现完整运行时，也没有已验证的性能数据。文档中的接口、指标和实验均为待实现目标。
+> **当前状态：仓库骨架已建立并通过 Colab 验收。** 当前提交提供可安装的 CPU 优先包、严格契约测试、标准目录和仅用于探活的空服务；尚未实现完整运行时，也没有已验证的性能数据。文档中的接口、指标和实验均为待实现目标。
 
 ## 项目目标
 
@@ -85,7 +85,8 @@ make serve  # 另一个终端访问 /healthz、/readyz、/metrics
 
 Google Colab 验收可直接打开 [`notebooks/colab_acceptance.ipynb`](notebooks/colab_acceptance.ipynb) 笔记本，
 依次运行固定 CPU 安装和 `python benchmarks/colab_acceptance.py`。脚本会检查
-Python 基线、运行测试并探测空服务三个端点，成功时输出 `COLAB_ACCEPTANCE=PASS`。
+Python 基线、运行测试并探测空服务三个端点；该骨架验收已在 Colab 实际通过，成功输出
+`COLAB_ACCEPTANCE=PASS`，且 `/healthz`、`/readyz`、`/metrics` 均返回 `200`。
 
 ## 预期仓库结构
 
