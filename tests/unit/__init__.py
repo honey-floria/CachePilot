@@ -1,1 +1,1 @@
-"""Unit tests for CPU-only building blocks."""
+"""仅 CPU 构建模块的单元测试。"""

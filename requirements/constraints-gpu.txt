@@ -1,5 +1,5 @@
-# Selected Phase 1 GPU dependency baseline.
-# This is a direct-dependency constraint set, not a fully resolved lock file.
+# 第 1 阶段选定的 GPU 依赖基线。
+# 这是直接依赖约束集合，不是完整解析后的锁定文件。
 huggingface-hub==1.5.0
 safetensors==0.6.2
 tokenizers==0.23.0

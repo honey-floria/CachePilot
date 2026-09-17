@@ -1,5 +1,5 @@
-# CPU-only, reproducible development/test entry point.
-# The project itself has no runtime dependency in the skeleton stage.
+# 仅 CPU 环境使用的可复现开发/测试安装入口。
+# 骨架阶段项目本身没有运行时依赖。
 -c constraints-cpu.txt
 -e .
 pytest==8.3.5

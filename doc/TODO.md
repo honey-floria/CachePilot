@@ -8,7 +8,7 @@
 - [x] **固定请求契约**：定义 request ID、tenant 来源、优先级、deadline、幂等键、token 口径、SSE 结束事件、错误码、取消与重试语义。验收：OpenAPI/schema 和契约测试覆盖有效、无效及重复提交。
 - [x] **固定模型与依赖**：记录模型 ID/revision、tokenizer revision、许可证、最大上下文、Python/PyTorch/vLLM 兼容矩阵。验收：配置不依赖浮动的 `latest`。
 - [x] **建立仓库骨架**：创建包、测试、workload、benchmark、配置和文档目录，固定 CPU 安装、静态检查和测试命令。验收：`requirements/requirements-cpu.txt`、`Makefile` 和 `pyproject.toml` 固定安装/检查入口；全新 Python 3.13.15 CPU 环境可以安装、运行测试和启动 `cachepilot.runtime.empty_service` 空服务；`notebooks/colab_acceptance.ipynb` 与 `benchmarks/colab_acceptance.py` 提供 Colab 验收路径。证据见[仓库骨架验收记录](acceptance/0004-repository-skeleton.md)。空服务仅用于探活，不代表推理运行时已实现。
-- [ ] **定义实验协议**：固定 trace schema、时钟口径、seed、JSONL/汇总 schema，以及硬件、软件、模型和策略版本字段。验收：缺少关键元数据的实验会被分析脚本判为无效。
+- [x] **定义实验协议**：固定 trace schema、时钟口径、seed、JSONL/汇总 schema，以及硬件、软件、模型和策略版本字段。验收：`config/experiment.schema.json` 与 [ADR-0005](adr/0005-experiment-protocol.md) 固定协议；`python benchmarks/analyze.py` 在缺少关键元数据、浮动版本或记录不一致时以非零状态判为无效。
 
 ## 1. Phase 0：无 GPU 运行时内核（70–100 小时）
 

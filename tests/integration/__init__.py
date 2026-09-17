@@ -1,1 +1,1 @@
-"""Integration smoke tests for package boundaries."""
+"""用于检查包边界的集成冒烟测试。"""

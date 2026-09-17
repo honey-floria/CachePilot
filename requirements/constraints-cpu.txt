@@ -1,3 +1,3 @@
-# Direct CPU development/test pins for the repository skeleton.
+# 仓库骨架的 CPU 开发/测试直接依赖固定版本。
 pytest==8.3.5
 ruff==0.9.10

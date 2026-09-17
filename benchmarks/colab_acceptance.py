@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _probe(url: str) -> tuple[int, str]:
-    with urlopen(url, timeout=5) as response:  # nosec B310 - local smoke test URL
+    with urlopen(url, timeout=5) as response:  # nosec B310：本地冒烟测试地址
         return response.status, response.read().decode("utf-8")
 
 

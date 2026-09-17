@@ -511,6 +511,10 @@ estimated_cost, policy_versions, terminal_state
 - 不将 SimExecutor、单卡、PCIe 双卡、NVLink 双卡混进同一结论；
 - 报告收益，也报告因公平性、传输和尾延迟带来的负面结果。
 
+具体的可执行实验协议（trace/JSONL/summary schema、单调时钟、seed 派生规则和
+元数据完整性校验）见 [ADR-0005](adr/0005-experiment-protocol.md)。分析器拒绝缺少
+硬件、软件、模型或策略版本的运行，避免把不可比较的结果写入同一报告。
+
 ---
 
 ## 12. 技术栈与仓库结构

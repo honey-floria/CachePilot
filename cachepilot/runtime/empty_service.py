@@ -26,7 +26,7 @@ class EmptyServiceHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
-    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+    def do_GET(self) -> None:  # noqa: N802：遵循 BaseHTTPRequestHandler API
         if self.path == "/healthz":
             self._write_json(200, {"status": "ok", "service": "cachepilot"})
             return
@@ -45,7 +45,7 @@ class EmptyServiceHandler(BaseHTTPRequestHandler):
         self._write_json(404, {"error": {"code": "not_found"}})
 
     def log_message(self, format: str, *args: object) -> None:
-        # Keep Colab output concise while retaining the standard server hook.
+        # 保持 Colab 输出简洁，同时保留标准服务钩子。
         return
 
 

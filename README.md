@@ -68,6 +68,7 @@ CPU 确定性模拟
 
 - [工程设计](doc/DESIGN.md)：系统边界、架构、协议、指标与阶段验收。
 - [实施 TODO 与资源规划](doc/TODO.md)：按依赖排序的任务、验收证据、硬件门槛和缩减路径。
+- [实验协议 ADR](doc/adr/0005-experiment-protocol.md)：trace、时钟、seed、原始记录和汇总 schema，以及分析器校验规则。
 - [仓库骨架验收记录](doc/acceptance/0004-repository-skeleton.md)：CPU/Colab 安装、测试和空服务冒烟测试。
 
 ## 骨架安装与验收
