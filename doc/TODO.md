@@ -4,9 +4,9 @@
 
 ## 0. 契约与实验基线
 
-- [ ] **确定首版范围**：单模型、每请求一个 tenant、聊天生成、SSE；列出暂不支持的 OpenAI 字段、工具调用、图像输入和跨 tenant KV 共享。验收：`doc/adr/` 中存在范围 ADR，API 不默默接受无效字段。
-- [ ] **固定请求契约**：定义 request ID、tenant 来源、优先级、deadline、幂等键、token 口径、SSE 结束事件、错误码、取消与重试语义。验收：OpenAPI/schema 和契约测试覆盖有效、无效及重复提交。
-- [ ] **固定模型与依赖**：记录模型 ID/revision、tokenizer revision、许可证、最大上下文、Python/PyTorch/vLLM 兼容矩阵。验收：配置不依赖浮动的 `latest`。
+- [x] **确定首版范围**：单模型、每请求一个 tenant、聊天生成、SSE；列出暂不支持的 OpenAI 字段、工具调用、图像输入和跨 tenant KV 共享。验收：`doc/adr/` 中存在范围 ADR，API 不默默接受无效字段。
+- [x] **固定请求契约**：定义 request ID、tenant 来源、优先级、deadline、幂等键、token 口径、SSE 结束事件、错误码、取消与重试语义。验收：OpenAPI/schema 和契约测试覆盖有效、无效及重复提交。
+- [x] **固定模型与依赖**：记录模型 ID/revision、tokenizer revision、许可证、最大上下文、Python/PyTorch/vLLM 兼容矩阵。验收：配置不依赖浮动的 `latest`。
 - [ ] **建立仓库骨架**：创建包、测试、workload、benchmark、配置和文档目录，固定 CPU 安装、静态检查和测试命令。验收：全新 CPU 环境可以安装并运行空服务与测试。
 - [ ] **定义实验协议**：固定 trace schema、时钟口径、seed、JSONL/汇总 schema，以及硬件、软件、模型和策略版本字段。验收：缺少关键元数据的实验会被分析脚本判为无效。
 

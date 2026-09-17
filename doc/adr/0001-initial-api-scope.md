@@ -177,7 +177,22 @@ tokenized_prefix
 10. 验证失败的请求不进入 Registry，且不产生 KV reservation。
 11. 两个 tenant 使用相同 tokenized prefix 时不会发生跨 tenant 逻辑命中。
 
-在 ADR 存在但上述可执行证据尚未完成时，`TODO.md` 中的“确定首版范围”任务仍保持未完成状态。
+以上证据由 `tests/contract/test_request_contract.py` 提供。其中
+`ChatRequestIntake` 固定“完整验证成功后才能进入生命周期流水线”的边界，
+`TenantPrefixIndex` 以包含 `tenant_id` 的 `PrefixScopeKey` 固定跨 tenant
+不命中的最小可执行语义。HTTP/FastAPI 适配器在接入时必须调用该入口，不能
+绕过它重复实现宽松校验。
+
+证据与实现的对应关系：
+
+- 1–9：严格请求校验和 OpenAPI schema 契约测试；
+- 10：`ScopeBoundaryTests` 验证非法请求不会触达下游生命周期状态；
+- 11：`TenantPrefixIsolationTests` 验证相同 token prefix 在不同 tenant
+  下使用不同逻辑作用域。
+
+这些测试全部通过后，`TODO.md` 中的“确定首版范围”可以标记完成。实际模型
+生成、完整 Registry/KV Planner 和 HTTP 服务不属于本范围决策项的实现承诺，
+分别由后续任务交付。
 
 ## 后果
 
@@ -197,7 +212,7 @@ tokenized_prefix
 
 ## 后续工作
 
-下一份请求契约应继续确定：
+以下线协议问题已经由 [ADR-0002](0002-request-contract.md) 固定：
 
 - request ID 的生成与透传；
 - tenant 的唯一来源和冲突规则；
@@ -206,3 +221,6 @@ tokenized_prefix
 - SSE chunk 与结束事件；
 - 错误码和错误响应结构；
 - 取消、客户端断连与重试语义。
+
+HTTP 服务装配、健康检查和空服务启动命令归入“建立仓库骨架”；完整
+Registry、Admission 和 KV Planner 则按 `TODO.md` 的后续顺序实现。
