@@ -1,0 +1,6 @@
+# CPU-only, reproducible development/test entry point.
+# The project itself has no runtime dependency in the skeleton stage.
+-c constraints-cpu.txt
+-e .
+pytest==8.3.5
+ruff==0.9.10

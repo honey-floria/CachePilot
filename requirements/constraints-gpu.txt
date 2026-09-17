@@ -1,0 +1,10 @@
+# Selected Phase 1 GPU dependency baseline.
+# This is a direct-dependency constraint set, not a fully resolved lock file.
+huggingface-hub==1.5.0
+safetensors==0.6.2
+tokenizers==0.23.0
+torch==2.11.0
+torchaudio==2.11.0
+torchvision==0.26.0
+transformers==5.5.3
+vllm==0.24.0

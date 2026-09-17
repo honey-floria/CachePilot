@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools==75.8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cachepilot"
+version = "0.1.0"
+description = "CPU-first control-plane skeleton for CachePilot"
+readme = "README.md"
+requires-python = "==3.11.13"
+license = { text = "Apache-2.0" }
+authors = [{ name = "CachePilot contributors" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.5",
+  "ruff==0.9.10",
+]
+
+[project.scripts]
+cachepilot-empty-service = "cachepilot.runtime.empty_service:main"
+
+[tool.setuptools.packages.find]
+include = ["cachepilot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = ["notebooks"]
