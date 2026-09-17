@@ -1,5 +1,4 @@
-# 默认忽略的文件
+# JetBrains 用户本地状态
 /shelf/
 /workspace.xml
-# 基于编辑器的 HTTP 客户端请求
 /httpRequests/
