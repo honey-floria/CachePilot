@@ -1,13 +1,13 @@
 # CachePilot 实施 TODO 与资源规划
 
-本文把[工程设计](DESIGN.md)转成按依赖排序的 Phase 0–2 实施任务。勾选框代表待完成，不代表当前进度；当前仓库尚无运行时代码。每项都要求“实现内容 + 验收证据”，不能用演示视频替代测试、原始实验数据或环境记录。
+本文把[工程设计](DESIGN.md)转成按依赖排序的 Phase 0–2 实施任务。勾选框代表待完成，不代表当前进度；当前仓库已具备 CPU-first 骨架和空服务，但尚无完整运行时代码。每项都要求“实现内容 + 验收证据”，不能用演示视频替代测试、原始实验数据或环境记录。
 
 ## 0. 契约与实验基线
 
 - [x] **确定首版范围**：单模型、每请求一个 tenant、聊天生成、SSE；列出暂不支持的 OpenAI 字段、工具调用、图像输入和跨 tenant KV 共享。验收：`doc/adr/` 中存在范围 ADR，API 不默默接受无效字段。
 - [x] **固定请求契约**：定义 request ID、tenant 来源、优先级、deadline、幂等键、token 口径、SSE 结束事件、错误码、取消与重试语义。验收：OpenAPI/schema 和契约测试覆盖有效、无效及重复提交。
 - [x] **固定模型与依赖**：记录模型 ID/revision、tokenizer revision、许可证、最大上下文、Python/PyTorch/vLLM 兼容矩阵。验收：配置不依赖浮动的 `latest`。
-- [ ] **建立仓库骨架**：创建包、测试、workload、benchmark、配置和文档目录，固定 CPU 安装、静态检查和测试命令。验收：全新 CPU 环境可以安装并运行空服务与测试。
+- [x] **建立仓库骨架**：创建包、测试、workload、benchmark、配置和文档目录，固定 CPU 安装、静态检查和测试命令。验收：`requirements/requirements-cpu.txt`、`Makefile` 和 `pyproject.toml` 固定安装/检查入口；全新 Python 3.11.13 CPU 环境可以安装、运行测试和启动 `cachepilot.runtime.empty_service` 空服务；`notebooks/colab_acceptance.ipynb` 与 `benchmarks/colab_acceptance.py` 提供 Colab 验收路径。证据见[仓库骨架验收记录](acceptance/0004-repository-skeleton.md)。空服务仅用于探活，不代表推理运行时已实现。
 - [ ] **定义实验协议**：固定 trace schema、时钟口径、seed、JSONL/汇总 schema，以及硬件、软件、模型和策略版本字段。验收：缺少关键元数据的实验会被分析脚本判为无效。
 
 ## 1. Phase 0：无 GPU 运行时内核（70–100 小时）

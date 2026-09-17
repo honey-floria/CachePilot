@@ -4,7 +4,7 @@ CachePilot 是一个面向多租户混合负载的 LLM 推理服务控制层。�
 
 CachePilot 不重新实现 CUDA kernel、attention、模型并行或执行器内部的 continuous batching。模型执行和物理 KV 分配由推理引擎负责；CachePilot 管理进入执行器之前的策略和跨 worker 的控制逻辑。
 
-> **当前状态：设计阶段。** 仓库目前只有设计文档和实施计划，没有可运行服务、安装包或已验证的性能数据。文档中的接口、指标和实验均为待实现目标。
+> **当前状态：仓库骨架已建立。** 当前提交提供可安装的 CPU-first 包、严格契约测试、标准目录和仅用于探活的空服务；尚未实现完整运行时，也没有已验证的性能数据。文档中的接口、指标和实验均为待实现目标。
 
 ## 项目目标
 
@@ -68,6 +68,24 @@ CPU 确定性模拟
 
 - [工程设计](doc/DESIGN.md)：系统边界、架构、协议、指标与阶段验收。
 - [实施 TODO 与资源规划](doc/TODO.md)：按依赖排序的任务、验收证据、硬件门槛和缩减路径。
+- [仓库骨架验收记录](doc/acceptance/0004-repository-skeleton.md)：CPU/Colab 安装、测试和空服务 smoke test。
+
+## 骨架安装与验收
+
+项目固定使用 Python `3.11.13`。在全新 CPU 环境中执行：
+
+```bash
+python3 -m pip install -r requirements/requirements-cpu.txt
+make check
+make serve  # 另一个终端访问 /healthz、/readyz、/metrics
+```
+
+`make lint` 使用固定版本 Ruff，`make test` 使用固定版本 pytest。空服务只返回
+健康/就绪/metrics 探活结果，不执行模型推理，也不代表 Phase 0–2 已完成。
+
+Google Colab 验收可直接打开 [`notebooks/colab_acceptance.ipynb`](notebooks/colab_acceptance.ipynb)，
+依次运行固定 CPU 安装和 `python benchmarks/colab_acceptance.py`。脚本会检查
+Python 基线、运行测试并探测空服务三个端点，成功时输出 `COLAB_ACCEPTANCE=PASS`。
 
 ## 预期仓库结构
 
@@ -79,5 +97,9 @@ tests/                unit/ integration/ load/ chaos/
 deploy/               单机 Compose 与监控配置
 doc/                  设计、TODO、ADR、实验记录与运行手册
 ```
+
+当前骨架已创建 `cachepilot/{runtime,routing,executors,telemetry}`、
+`workloads/`、`benchmarks/`、`deploy/`、`tests/{unit,integration,load,chaos}/`
+和 Colab 验收 notebook；具体运行时能力仍按 TODO 中的阶段顺序实现。
 
 接口草案包括 `/v1/chat/completions`、`/v1/requests/{id}`、`/v1/requests/{id}/cancel`、`/healthz`、`/readyz` 与 `/metrics`。正式支持范围由 OpenAPI 和契约测试确定；未实现的字段、端点和执行器能力不得宣称兼容。

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "tokenizer_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "tokenizer_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "license": {
+    "spdx_id": "Apache-2.0",
+    "source_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/blob/7ae557604adf67be50417f59c2c2f167def9a775/LICENSE"
+  },
+  "trust_remote_code": false,
+  "model_max_context_tokens": 32768,
+  "initial_service_context_limit": 8192,
+  "architecture": {
+    "model_type": "qwen2",
+    "num_hidden_layers": 24,
+    "num_attention_heads": 14,
+    "num_key_value_heads": 2,
+    "hidden_size": 896,
+    "head_dim": 64
+  },
+  "default_gpu_dtype": "bfloat16",
+  "cpu_smoke_dtype": "float32",
+  "sources": {
+    "model_metadata": "https://huggingface.co/api/models/Qwen/Qwen2.5-0.5B-Instruct",
+    "model_config": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/resolve/7ae557604adf67be50417f59c2c2f167def9a775/config.json",
+    "verified_at": "2026-09-18"
+  }
+}

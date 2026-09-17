@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "python_version": "3.11.13",
+  "profiles": {
+    "phase0_cpu": {
+      "platform": "macOS or Linux CPU",
+      "python": "3.11.13",
+      "torch": null,
+      "transformers": null,
+      "vllm": null,
+      "status": "selected"
+    },
+    "torch_executor": {
+      "platform": "Linux x86_64 with a PyTorch-supported NVIDIA GPU",
+      "python": "3.11.13",
+      "torch": "2.11.0",
+      "transformers": "5.5.3",
+      "tokenizers": "0.23.0",
+      "safetensors": "0.6.2",
+      "huggingface_hub": "1.5.0",
+      "vllm": null,
+      "status": "metadata-compatible; GPU validation pending"
+    },
+    "vllm_executor": {
+      "platform": "Linux x86_64 with a vLLM-supported NVIDIA GPU",
+      "python": "3.11.13",
+      "torch": "2.11.0",
+      "torchaudio": "2.11.0",
+      "torchvision": "0.26.0",
+      "transformers": "5.5.3",
+      "tokenizers": "0.23.0",
+      "safetensors": "0.6.2",
+      "huggingface_hub": "1.5.0",
+      "vllm": "0.24.0",
+      "status": "metadata-compatible; GPU validation pending"
+    }
+  },
+  "upstream_constraints": {
+    "vllm_0_24_0_requires_python": ">=3.10,<3.15",
+    "vllm_0_24_0_requires_torch": "==2.11.0",
+    "vllm_0_24_0_requires_transformers": ">=5.5.3",
+    "transformers_5_5_3_requires_python": ">=3.10.0",
+    "transformers_5_5_3_requires_tokenizers": ">=0.22.0,<=0.23.0"
+  },
+  "sources": {
+    "vllm": "https://pypi.org/pypi/vllm/0.24.0/json",
+    "transformers": "https://pypi.org/pypi/transformers/5.5.3/json",
+    "verified_at": "2026-09-18"
+  }
+}

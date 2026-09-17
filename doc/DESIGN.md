@@ -65,6 +65,20 @@ Optional 同机 P/D 协议与真实 KV handoff 实验
 
 Phase 0–2 是当前项目边界。单卡是必须完成层；Phase 2 必须先完成 replica routing，不能为了追求 P/D 跳过单卡正确性或双 worker 基线。
 
+### 3.1 仓库骨架与环境入口
+
+仓库骨架阶段固定 Python `3.11.13`，CPU 安装入口为
+`requirements/requirements-cpu.txt`，静态检查和测试入口分别为
+`make lint` 与 `make test`，组合验收入口为 `make check`。当前
+`cachepilot.runtime.empty_service` 只提供 `/healthz`、`/readyz` 和 `/metrics`
+探活端点，作为全新 CPU 环境与 Google Colab 的安装/启动 smoke test；它不执行
+模型推理，不计入 Phase 0–1 的功能或性能完成度。
+
+可复现验收脚本位于 `benchmarks/colab_acceptance.py`， notebook 位于
+`notebooks/colab_acceptance.ipynb`。脚本要求解释器与 ADR-0003 的精确 Python
+基线一致，运行契约测试、启动空服务并检查三个端点，输出
+`COLAB_ACCEPTANCE=PASS` 才算骨架验收通过。
+
 ---
 
 ## 4. 总体架构
