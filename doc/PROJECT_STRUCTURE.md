@@ -59,7 +59,10 @@ CachePilot/
 │   │   └── __init__.py                # 多 Worker 路由包占位
 │   ├── runtime/
 │   │   ├── __init__.py                # 运行时包入口并导出服务创建函数
-│   │   └── empty_service.py           # 健康检查、就绪和指标空服务
+│   │   ├── empty_service.py           # 健康检查、就绪和指标空服务
+│   │   ├── registry.py                # 请求查询、去重、状态和事件日志 Registry
+│   │   ├── resources.py               # 逻辑 KV 租约和物理 handle 资源账本
+│   │   └── state_machine.py           # 请求生命周期状态机和 token 输出门禁
 │   └── telemetry/
 │       └── __init__.py                # 指标、trace 和成本账本包占位
 ├── config/
@@ -83,7 +86,10 @@ CachePilot/
 │   ├── __init__.py                    # 测试包入口
 │   ├── unit/
 │   │   ├── __init__.py                # 单元测试包入口
-│   │   └── test_empty_service.py      # 空服务端点测试
+│   │   ├── test_empty_service.py      # 空服务端点测试
+│   │   ├── test_registry.py           # Registry 查询、幂等和并发终态测试
+│   │   ├── test_resources.py          # 资源申请、增长、释放和回收测试
+│   │   └── test_state_machine.py      # 生命周期状态转换与幂等测试
 │   ├── integration/
 │   │   ├── __init__.py                # 集成测试包入口
 │   │   └── test_imports.py            # 各子包导入冒烟测试
@@ -183,8 +189,11 @@ CachePilot/
 
 | 文件 | 功能 |
 |---|---|
-| `cachepilot/runtime/__init__.py` | 声明运行时包并导出 `create_server`；后续计划承载 Registry 和 Worker loop。 |
+| `cachepilot/runtime/__init__.py` | 声明运行时包，导出请求状态机和 `create_server`；后续计划继续承载 Registry 和 Worker loop。 |
 | `cachepilot/runtime/empty_service.py` | 使用 Python 标准库实现线程化空 HTTP 服务，提供 `/healthz`、`/readyz`、`/metrics` 和统一 404 响应。它只用于环境验收，不执行模型推理，也不实现正式 OpenAI API。 |
+| `cachepilot/runtime/registry.py` | 实现线程安全的内存请求 Registry，按 request ID 和租户作用域幂等键注册、查询和去重，并通过不可变快照暴露当前状态、token 数与状态事件日志。 |
+| `cachepilot/runtime/resources.py` | 实现线程安全的资源租约账本：管理逻辑 KV block 的申请、增长、容量和一次性释放，并独立记录执行器物理 handle。 |
+| `cachepilot/runtime/state_machine.py` | 实现单请求生命周期状态机、原子状态迁移、事件 ID 幂等与冲突检测、不可逆终态，以及仅在 `EXECUTING` 状态开放的 token 输出登记门禁。 |
 
 ### 5.8 遥测：`cachepilot/telemetry/`
 
@@ -236,6 +245,9 @@ CachePilot/
 | `tests/__init__.py` | 标记顶层测试包。 |
 | `tests/unit/__init__.py` | 标记 CPU 单元测试包。 |
 | `tests/unit/test_empty_service.py` | 启动临时空服务，验证健康、就绪和 Prometheus 文本指标端点均能正确响应。 |
+| `tests/unit/test_registry.py` | 验证请求注册与查询、request ID/幂等键去重、租户隔离、状态快照和取消/完成/失败并发竞争只产生一个终态。 |
+| `tests/unit/test_resources.py` | 验证 reservation 申请、增长、容量限制、物理 handle 隔离、一次性释放和所有终态路径回收到基线。 |
+| `tests/unit/test_state_machine.py` | 验证主路径、非法转换、重复事件、事件冲突、任意非终态进入异常终态、终态不可逆和终态后禁止输出 token。 |
 | `tests/integration/__init__.py` | 标记集成冒烟测试包。 |
 | `tests/integration/test_imports.py` | 验证 cache、config、executors、gateway、routing、runtime 和 telemetry 等包都可以成功导入。 |
 | `tests/contract/__init__.py` | 标记可执行契约测试包。 |

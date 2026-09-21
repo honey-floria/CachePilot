@@ -14,9 +14,9 @@
 
 ### 1.1 请求生命周期与资源所有权
 
-- [ ] **状态机**：实现 `RECEIVED → TOKENIZED → QUEUED → ADMITTED → ROUTED → EXECUTING → FINISHED`；终态为 `CANCELLED/TIMED_OUT/REJECTED/FAILED`。验收：非法转换被拒绝，重复事件幂等，终态不可逆且不再输出 token。
-- [ ] **Registry 与幂等性**：按 request ID 和幂等键查询、去重，保存当前状态与事件日志。验收：并发取消、完成和失败竞争时只产生一个终态。
-- [ ] **资源租约**：实现 reservation 申请、增长和一次性释放，区分逻辑 KV block 与执行器物理 handle。验收：正常结束、取消、超时、断连和异常后逻辑占用均回到基线。
+- [x] **状态机**：实现 `RECEIVED → TOKENIZED → QUEUED → ADMITTED → ROUTED → EXECUTING → FINISHED`；终态为 `CANCELLED/TIMED_OUT/REJECTED/FAILED`。验收：非法转换被拒绝，重复事件幂等，终态不可逆且不再输出 token。实现见 `cachepilot/runtime/state_machine.py`，验证见 `tests/unit/test_state_machine.py`。
+- [x] **Registry 与幂等性**：按 request ID 和幂等键查询、去重，保存当前状态与事件日志。验收：并发取消、完成和失败竞争时只产生一个终态。实现见 `cachepilot/runtime/registry.py`，验证见 `tests/unit/test_registry.py`。
+- [x] **资源租约**：实现 reservation 申请、增长和一次性释放，区分逻辑 KV block 与执行器物理 handle。验收：正常结束、取消、超时、断连和异常后逻辑占用均回到基线。实现见 `cachepilot/runtime/resources.py` 和 `cachepilot/runtime/registry.py`，验证见 `tests/unit/test_resources.py`。
 
 ### 1.2 KV 容量与准入
 
