@@ -20,10 +20,10 @@
 
 ### 1.2 KV 容量与准入
 
-- [ ] **KV Planner**：根据模型层数、KV heads、head dim、dtype、block size 和上下文上限计算理论 block/bytes。验收：手算样例一致；配置不足时拒绝推导“真实可用显存”。
-- [ ] **Strict Admission**：按 prompt + `max_new_tokens` 预留，并限制 active sequences、总 blocks、tenant token/并发/队列。验收：不能超额接纳，容量不足时进入有界队列或明确拒绝。
-- [ ] **Adaptive Admission**：使用分桶的历史输出长度 P95 和安全余量；样本不足回退 Strict；生成增长时重新评估硬上限。验收：长尾请求不能越过硬容量，并记录估计误差和回退次数。
-- [ ] **过载与超时**：定义排队 deadline、执行 deadline、队列上限和重试建议。验收：burst 下行为可预测，所有超时请求最终回收资源。
+- [x] **KV Planner**：根据模型层数、KV heads、head dim、dtype、block size 和上下文上限计算理论 block/bytes。验收：手算样例一致；配置不足时拒绝推导“真实可用显存”。实现见 `cachepilot/runtime/kv_planner.py`，验证见 `tests/unit/test_kv_planner.py`。
+- [x] **Strict Admission**：按 prompt + `max_new_tokens` 预留，并限制 active sequences、总 blocks、tenant token/并发/队列。验收：不能超额接纳，容量不足时进入有界队列或明确拒绝。实现见 `cachepilot/runtime/admission.py`，验证见 `tests/unit/test_admission.py`。
+- [x] **Adaptive Admission**：使用分桶的历史输出长度 P95 和安全余量；样本不足回退 Strict；生成增长时重新评估硬上限。验收：长尾请求不能越过硬容量，并记录估计误差和回退次数。实现见 `cachepilot/runtime/adaptive_admission.py`，验证见 `tests/unit/test_adaptive_admission.py`。
+- [x] **过载与超时**：定义排队 deadline、执行 deadline、队列上限和重试建议。验收：burst 下行为可预测，所有超时请求最终回收资源。实现见 `cachepilot/runtime/admission.py` 和 `cachepilot/runtime/deadlines.py`，验证见 `tests/unit/test_admission.py` 与 `tests/unit/test_deadlines.py`。
 
 ### 1.3 调度与模拟执行器
 

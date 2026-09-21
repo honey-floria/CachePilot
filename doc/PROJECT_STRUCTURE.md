@@ -59,9 +59,13 @@ CachePilot/
 │   │   └── __init__.py                # 多 Worker 路由包占位
 │   ├── runtime/
 │   │   ├── __init__.py                # 运行时包入口并导出服务创建函数
+│   │   ├── adaptive_admission.py      # P95 自适应 KV 准入与增长保护
+│   │   ├── admission.py               # Strict KV 准入与有界排队
+│   │   ├── deadlines.py               # 单调时钟排队/执行超时与资源回收
 │   │   ├── empty_service.py           # 健康检查、就绪和指标空服务
 │   │   ├── registry.py                # 请求查询、去重、状态和事件日志 Registry
 │   │   ├── resources.py               # 逻辑 KV 租约和物理 handle 资源账本
+│   │   ├── kv_planner.py              # KV block 与理论字节容量规划
 │   │   └── state_machine.py           # 请求生命周期状态机和 token 输出门禁
 │   └── telemetry/
 │       └── __init__.py                # 指标、trace 和成本账本包占位
@@ -190,9 +194,13 @@ CachePilot/
 | 文件 | 功能 |
 |---|---|
 | `cachepilot/runtime/__init__.py` | 声明运行时包，导出请求状态机和 `create_server`；后续计划继续承载 Registry 和 Worker loop。 |
+| `cachepilot/runtime/adaptive_admission.py` | 按 tenant 和 prompt 长度分桶统计历史输出 P95，加安全余量进行自适应 reservation；样本不足回退 Strict，并在生成增长时阻止突破 KV 或 tenant 硬上限。 |
+| `cachepilot/runtime/admission.py` | 实现线程安全的 Strict Admission：按 prompt 与最大输出长度预留 KV blocks，并原子限制全局活跃数、安全容量、tenant token/并发及全局/tenant 队列长度；返回稳定的接纳、排队或拒绝原因。 |
+| `cachepilot/runtime/deadlines.py` | 使用单调时钟跟踪请求总 deadline、排队 deadline 和执行 deadline；由 runtime loop 确定性扫描到期请求并调用资源回收回调。 |
 | `cachepilot/runtime/empty_service.py` | 使用 Python 标准库实现线程化空 HTTP 服务，提供 `/healthz`、`/readyz`、`/metrics` 和统一 404 响应。它只用于环境验收，不执行模型推理，也不实现正式 OpenAI API。 |
 | `cachepilot/runtime/registry.py` | 实现线程安全的内存请求 Registry，按 request ID 和租户作用域幂等键注册、查询和去重，并通过不可变快照暴露当前状态、token 数与状态事件日志。 |
 | `cachepilot/runtime/resources.py` | 实现线程安全的资源租约账本：管理逻辑 KV block 的申请、增长、容量和一次性释放，并独立记录执行器物理 handle。 |
+| `cachepilot/runtime/kv_planner.py` | 根据模型架构、KV dtype、block size 和服务上下文限制计算请求逻辑 blocks 与理论 KV 字节；只有显式给出 KV 专用字节预算时才换算容量，不从 GPU 总显存推导真实可用容量。 |
 | `cachepilot/runtime/state_machine.py` | 实现单请求生命周期状态机、原子状态迁移、事件 ID 幂等与冲突检测、不可逆终态，以及仅在 `EXECUTING` 状态开放的 token 输出登记门禁。 |
 
 ### 5.8 遥测：`cachepilot/telemetry/`
