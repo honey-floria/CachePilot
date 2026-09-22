@@ -1,5 +1,7 @@
 """基于历史输出长度 P95 的 Adaptive Admission。
 
+来自相同 tenant、相同 prompt长度桶的历史实际输出长度
+
 Adaptive 模式仍复用 Strict 的所有硬上限，但初始 reservation 改为 tenant
 与 prompt 长度分桶后的历史输出 P95 加安全余量。生成超过估算时必须先增长租约；
 如果增长会突破 KV 或 tenant 容量，调用方必须停止生成。

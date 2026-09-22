@@ -53,7 +53,15 @@ class ResourceLeaseSnapshot:
 
 @dataclass
 class _ResourceLease:
-    """账本内部使用的可变租约；只能在 manager 锁内修改。"""
+    """账本内部使用的可变租约；只能在 manager 锁内修改。
+
+    Attributes:
+        request_id: 拥有该租约的请求 ID。
+        logical_blocks: 当前仍被请求占用的逻辑 KV block 数。
+        peak_logical_blocks: 请求生命周期内的逻辑 block 峰值。
+        physical_handles: 执行器物理资源标识的只读副本。
+        released: 租约是否已经执行过释放。
+    """
 
     request_id: str
     logical_blocks: int

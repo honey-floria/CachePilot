@@ -96,7 +96,8 @@ class RequestRegistry:
         request: ValidatedChatRequest,
         received_event_id: Optional[str] = None,
     ) -> ClaimResult:
-        """原子注册请求，或返回与现有请求一致的去重结果。
+        """把一个已经通过请求校验的 ValidatedChatRequest
+        注册到 Registry，并处理重复请求和幂等请求。
 
         Args:
             request: Gateway 已验证并规范化的聊天请求。
@@ -200,7 +201,7 @@ class RequestRegistry:
         target: RequestState,
         event_id: str,
     ) -> TransitionResult:
-        """将状态事件提交给指定请求的原子状态机。
+        """让指定请求从当前状态切换到目标状态，并记录这次状态变化
 
         Args:
             request_id: 目标请求 ID。

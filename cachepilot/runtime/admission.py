@@ -2,8 +2,7 @@
 
 Strict 模式始终按 ``prompt_tokens + max_new_tokens`` 预留资源。它牺牲部分
 利用率来换取可预测性，并在一把锁内同时检查全局容量、tenant 配额和
-队列
-长度，保证并发提交不会突破硬上限。
+队列长度，保证并发提交不会突破硬上限。
 """
 
 from __future__ import annotations
