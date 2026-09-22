@@ -67,6 +67,7 @@ CachePilot/
 │   │   ├── registry.py                # 请求查询、去重、状态和事件日志 Registry
 │   │   ├── resources.py               # 逻辑 KV 租约和物理 handle 资源账本
 │   │   ├── kv_planner.py              # KV block 与理论字节容量规划
+│   │   ├── loop.py                    # active/token/KV 三重预算调度循环
 │   │   ├── scheduler.py               # FCFS/WFQ 优先级与 tenant 公平调度
 │   │   └── state_machine.py           # 请求生命周期状态机和 token 输出门禁
 │   └── telemetry/
@@ -95,6 +96,7 @@ CachePilot/
 │   │   ├── test_empty_service.py      # 空服务端点测试
 │   │   ├── test_registry.py           # Registry 查询、幂等和并发终态测试
 │   │   ├── test_resources.py          # 资源申请、增长、释放和回收测试
+│   │   ├── test_runtime_loop.py       # 三重预算、回收顺序和混合长度测试
 │   │   ├── test_scheduler.py          # FCFS/WFQ 顺序、公平与重放测试
 │   │   ├── test_sim_executor.py       # 模拟执行、背压、取消和故障测试
 │   │   └── test_state_machine.py      # 生命周期状态转换与幂等测试
@@ -207,6 +209,7 @@ CachePilot/
 | `cachepilot/runtime/resources.py` | 实现线程安全的资源租约账本：管理逻辑 KV block 的申请、增长、容量和一次性释放，并独立记录执行器物理 handle。 |
 | `cachepilot/runtime/scheduler.py` | 实现线程安全且可注入逻辑时钟的 FCFS/WFQ 调度：维护 interactive/batch 下的 tenant FIFO 子队列，以精确分数计算 WFQ 虚拟标签，并按最大队首等待时间提供饥饿保护。 |
 | `cachepilot/runtime/kv_planner.py` | 根据模型架构、KV dtype、block size 和服务上下文限制计算请求逻辑 blocks 与理论 KV 字节；只有显式给出 KV 专用字节预算时才换算容量，不从 GPU 总显存推导真实可用容量。 |
+| `cachepilot/runtime/loop.py` | 协调 Scheduler 与 SimExecutor：每轮先回收完成请求并重建 KV 账本，再按 active sequences、batch tokens 和 KV blocks 三重硬预算接纳与推进请求。 |
 | `cachepilot/runtime/state_machine.py` | 实现单请求生命周期状态机、原子状态迁移、事件 ID 幂等与冲突检测、不可逆终态，以及仅在 `EXECUTING` 状态开放的 token 输出登记门禁。 |
 
 ### 5.8 遥测：`cachepilot/telemetry/`
@@ -261,6 +264,7 @@ CachePilot/
 | `tests/unit/test_empty_service.py` | 启动临时空服务，验证健康、就绪和 Prometheus 文本指标端点均能正确响应。 |
 | `tests/unit/test_registry.py` | 验证请求注册与查询、request ID/幂等键去重、租户隔离、状态快照和取消/完成/失败并发竞争只产生一个终态。 |
 | `tests/unit/test_resources.py` | 验证 reservation 申请、增长、容量限制、物理 handle 隔离、一次性释放和所有终态路径回收到基线。 |
+| `tests/unit/test_runtime_loop.py` | 验证完成回收先于同轮接纳、token 额度可部分推进、active 轮转、单请求容量拒绝、混合长短请求不突破三重硬上限及确定性重放。 |
 | `tests/unit/test_state_machine.py` | 验证主路径、非法转换、重复事件、事件冲突、任意非终态进入异常终态、终态不可逆和终态后禁止输出 token。 |
 | `tests/unit/test_scheduler.py` | 验证 FCFS 优先级与类内顺序、tenant FIFO 子队列、WFQ 权重和虚拟完成标签、最大饥饿提升及固定 trace 确定性重放。 |
 | `tests/unit/test_sim_executor.py` | 验证逻辑时钟推进、prefill/decode、KV block 增长、continuous batch 补位、慢客户端背压、取消、worker 故障和相同输入完全一致重放。 |
@@ -288,6 +292,7 @@ CachePilot/
 | `doc/adr/0005-experiment-protocol.md` | 决定可复现实验的运行单位、trace schema、时钟、seed、manifest、逐请求记录、汇总和验收规则。 |
 | `doc/adr/0006-fcfs-and-wfq-scheduling.md` | 决定 FCFS/WFQ 的优先级、tenant 子队列、虚拟时间、权重、稳定打破平局和最大饥饿时间语义。 |
 | `doc/adr/0007-sim-executor.md` | 决定 SimExecutor 的逻辑 tick 顺序、prefill/decode 成本、KV 生命周期、输出缓冲、取消/故障和确定性重放语义。 |
+| `doc/adr/0008-runtime-loop-budgets.md` | 决定单 worker 调度循环的完成/回收顺序、完整 KV reservation、实际 KV 账本、逐轮 token 配额和三重硬预算不变量。 |
 
 ## 13. 部署与 Notebook
 

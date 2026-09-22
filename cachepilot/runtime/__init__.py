@@ -1,7 +1,8 @@
 """CachePilot 请求生命周期与服务运行时公共接口。
 
 调用方优先从本模块导入稳定类型；以下子模块分别负责准入、deadline、
-KV 规划、Registry、资源账本、状态机和公平调度。执行器与调度循环尚未导出。
+KV 规划、Registry、资源账本、状态机、公平调度和三重预算调度循环。
+执行器接口由 ``cachepilot.executors`` 导出。
 """
 
 from .admission import (
@@ -38,6 +39,16 @@ from .kv_planner import (
     KVPlannerError,
     KVRequestPlan,
     UsableKVCapacityRequiredError,
+)
+from .loop import (
+    RequestExceedsLoopCapacityError,
+    RuntimeBudgetSnapshot,
+    RuntimeLoop,
+    RuntimeLoopConfig,
+    RuntimeLoopError,
+    RuntimeLoopSnapshot,
+    RuntimeRequest,
+    RuntimeTickResult,
 )
 from .registry import RequestRegistry, RequestSnapshot
 from .resources import ResourceLeaseManager, ResourceLeaseSnapshot
@@ -83,6 +94,15 @@ __all__ = [
     "KVCapacityPlan",
     "ContextLimitExceededError",
     "UsableKVCapacityRequiredError",
+    # 三重预算调度循环。
+    "RequestExceedsLoopCapacityError",
+    "RuntimeBudgetSnapshot",
+    "RuntimeLoop",
+    "RuntimeLoopConfig",
+    "RuntimeLoopError",
+    "RuntimeLoopSnapshot",
+    "RuntimeRequest",
+    "RuntimeTickResult",
     # 资源所有权、请求状态机和骨架探活服务。
     "ResourceLeaseManager",
     "ResourceLeaseSnapshot",

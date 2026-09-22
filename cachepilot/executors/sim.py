@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
-from typing import Deque, Dict, Optional, Tuple
+from typing import Deque, Dict, Mapping, Optional, Tuple
 
 
 class SimExecutorError(ValueError):
@@ -268,6 +268,12 @@ class SimExecutor:
         return self._clock
 
     @property
+    def config(self) -> SimExecutorConfig:
+        """返回执行器使用的不可变模拟配置。"""
+
+        return self._config
+
+    @property
     def has_work(self) -> bool:
         """返回是否仍有排队、计算或等待客户端排空的请求。"""
 
@@ -319,17 +325,24 @@ class SimExecutor:
             seed=request.seed,
         )
 
-    def step(self) -> SimExecutorSnapshot:
+    def step(
+        self,
+        request_token_budgets: Optional[Mapping[str, int]] = None,
+    ) -> SimExecutorSnapshot:
         """按固定阶段顺序推进一个逻辑 tick，并返回完整快照。
         整个模拟器核心入口
 
         每轮依次处理到期取消、客户端排空、continuous batch 补位、
         prefill/decode、streaming 完成和峰值更新，最后把逻辑时钟推进
-        ``tick_ns``。worker 故障后不能继续推进。
+        ``tick_ns``。``request_token_budgets`` 缺省时所有 active 请求按配置
+        速率推进；传入映射时，只有获得正 token 配额的请求会推进，且实际
+        prefill/decode 工作量不会超过其配额。worker 故障后不能继续推进。
         """
 
         if not self._healthy:
             raise WorkerUnavailableError("worker is not healthy")
+        if request_token_budgets is not None:
+            self._validate_token_budgets(request_token_budgets)
         now_ns = self._clock()
         self._cancel_due(now_ns)
         self._drain_clients()
@@ -339,10 +352,13 @@ class SimExecutor:
             record = self._active.get(request_id)
             if record is None:
                 continue
+            token_budget = self._token_budget(record, request_token_budgets)
+            if token_budget == 0:
+                continue
             if record.state is SimRequestState.PREFILLING:
-                self._advance_prefill(record)
+                self._advance_prefill(record, token_budget)
             elif record.state is SimRequestState.DECODING:
-                self._advance_decode(record)
+                self._advance_decode(record, token_budget)
         self._finish_drained_streams()
         self._update_peaks()
         self._ticks += 1
@@ -573,6 +589,7 @@ class SimExecutor:
     def _advance_prefill(
         self,
         record: _SimRequestRecord,  # 当前处于 PREFILLING 的请求记录。
+        token_budget: int,  # 本 tick 允许该请求处理的最大 token 数。
     ) -> None:
         """处理一部分 prompt token，并增长 KV。
 
@@ -580,7 +597,11 @@ class SimExecutor:
         """
 
         remaining = record.request.prompt_tokens - record.prompt_tokens_processed
-        processed = min(self._config.prefill_tokens_per_tick, remaining)
+        processed = min(
+            self._config.prefill_tokens_per_tick,
+            token_budget,
+            remaining,
+        )
         record.prompt_tokens_processed += processed
         self._grow_kv(record, record.prompt_tokens_processed)
         self._emit(
@@ -611,6 +632,7 @@ class SimExecutor:
     def _advance_decode(
         self,
         record: _SimRequestRecord,  # 当前处于 DECODING 的请求记录。
+        token_budget: int,  # 本 tick 允许该请求生成的最大 token 数。
     ) -> None:
         """生成输出 token；缓冲满时记录背压。
 
@@ -625,6 +647,7 @@ class SimExecutor:
         )
         generated = min(
             self._config.decode_tokens_per_tick,
+            token_budget,
             remaining,
             available_buffer,
         )
@@ -641,7 +664,12 @@ class SimExecutor:
                 generated_tokens=record.generated_tokens,
                 buffered_tokens=record.buffered_tokens,
             )
-        if generated < min(self._config.decode_tokens_per_tick, remaining):
+        allowed_by_compute = min(
+            self._config.decode_tokens_per_tick,
+            token_budget,
+            remaining,
+        )
+        if generated < allowed_by_compute:
             self._emit(
                 SimEventKind.CLIENT_BACKPRESSURE,
                 record.request.request_id,
@@ -801,6 +829,37 @@ class SimExecutor:
             )
         )
         self._next_event_sequence += 1
+
+    def _validate_token_budgets(
+        self,
+        budgets: Mapping[str, int],  # request ID 到本 tick token 配额的映射。
+    ) -> None:
+        """校验外部 runtime loop 提供的逐请求工作配额。"""
+
+        if not isinstance(budgets, Mapping):
+            raise SimExecutorError("request_token_budgets must be a mapping")
+        for request_id, token_budget in budgets.items():
+            _require_identifier(request_id, "request_token_budgets key")
+            _require_non_negative_int(token_budget, "request token budget")
+            if request_id not in self._records:
+                raise SimExecutorError(
+                    "token budget references unknown request: {0}".format(
+                        request_id
+                    )
+                )
+
+    def _token_budget(
+        self,
+        record: _SimRequestRecord,  # 要取得本 tick 工作配额的请求记录。
+        budgets: Optional[Mapping[str, int]],  # 可选的外部逐请求配额。
+    ) -> int:
+        """返回请求当前阶段可使用的配置上限或外部配额。"""
+
+        if budgets is not None:
+            return budgets.get(record.request.request_id, 0)
+        if record.state is SimRequestState.PREFILLING:
+            return self._config.prefill_tokens_per_tick
+        return self._config.decode_tokens_per_tick
 
     def _current_logical_blocks(self) -> int:
         """统计所有请求当前仍占用的逻辑 KV block 总数。"""
