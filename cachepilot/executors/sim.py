@@ -72,6 +72,8 @@ class LogicalClock:
         self,
         initial_ns: int = 0,  # 时钟初始纳秒值。
     ) -> None:
+        """创建停在 ``initial_ns`` 的逻辑时钟；构造过程不会读取墙上时间。"""
+
         _require_non_negative_int(initial_ns, "initial_ns")
         self._now_ns = initial_ns
 
@@ -106,6 +108,8 @@ class SimExecutorConfig:
     worker_id: str = "sim-worker-0"  # 模拟 worker 的稳定标识。
 
     def __post_init__(self) -> None:
+        """校验执行速率、容量、seed 和 worker ID，尽早拒绝无效实验配置。"""
+
         for field_name in (
             "tick_ns",
             "block_size",
@@ -135,6 +139,8 @@ class SimRequest:
     client_drain_tokens_per_tick: Optional[int] = None  # 请求级客户端排空速率。
 
     def __post_init__(self) -> None:
+        """校验请求规模、seed、自动取消时间和可选客户端排空速率。"""
+
         _require_identifier(self.request_id, "request_id")
         _require_non_negative_int(self.prompt_tokens, "prompt_tokens")
         _require_non_negative_int(self.output_tokens, "output_tokens")
@@ -232,6 +238,12 @@ class SimExecutor:
         config: SimExecutorConfig,  # 固定 tick、batch、KV 和缓冲配置。
         clock: Optional[LogicalClock] = None,  # 可选外部可控逻辑时钟。
     ) -> None:
+        """创建一个健康且无请求的模拟 worker。
+
+        未传入 ``clock`` 时创建从 0 开始的 ``LogicalClock``。内部队列、
+        active batch、事件序号和峰值统计都从空状态开始。
+        """
+
         if not isinstance(config, SimExecutorConfig):
             raise TypeError("config must be a SimExecutorConfig")
         if clock is not None and not isinstance(clock, LogicalClock):
@@ -268,7 +280,12 @@ class SimExecutor:
         self,
         request: SimRequest,  # 要进入模拟执行队列的请求。
     ) -> None:
-        """按调用顺序提交请求；worker 故障后拒绝新工作。"""
+        """把新请求登记为 ``QUEUED`` 并追加到 FIFO 等待队列。
+
+        提交时固定相对取消时间并记录 ``SUBMITTED`` 事件，但不会立即执行prefill；
+        请求要等下一次 ``step`` 补入 active batch。
+        重复 request ID或 worker 已故障时拒绝提交。
+        """
 
         if not isinstance(request, SimRequest):
             raise TypeError("request must be a SimRequest")
@@ -303,7 +320,13 @@ class SimExecutor:
         )
 
     def step(self) -> SimExecutorSnapshot:
-        """推进一个 tick，并返回推进后的完整快照。"""
+        """按固定阶段顺序推进一个逻辑 tick，并返回完整快照。
+        整个模拟器核心入口
+
+        每轮依次处理到期取消、客户端排空、continuous batch 补位、
+        prefill/decode、streaming 完成和峰值更新，最后把逻辑时钟推进
+        ``tick_ns``。worker 故障后不能继续推进。
+        """
 
         if not self._healthy:
             raise WorkerUnavailableError("worker is not healthy")
@@ -330,7 +353,11 @@ class SimExecutor:
         self,
         max_ticks: int = 100_000,  # 防止零速客户端等配置导致无限运行。
     ) -> SimExecutorSnapshot:
-        """持续推进直到所有请求终止或达到 tick 上限。"""
+        """重复调用 ``step``，直到所有请求进入终态。
+
+        ``max_ticks`` 是防无限循环保护，主要覆盖客户端排空速率为 0 的
+        情况；达到上限仍有工作时抛出 ``SimulationLimitError``。
+        """
 
         _require_positive_int(max_ticks, "max_ticks")
         executed = 0
@@ -347,7 +374,12 @@ class SimExecutor:
         self,
         request_id: str,  # 要取消的已知请求 ID。
     ) -> bool:
-        """立即取消非终态请求并释放其逻辑 KV。"""
+        """立即把已知非终态请求切换为 ``CANCELLED``。
+
+        该操作会从等待队列或 active batch 移除请求、释放逻辑 KV、丢弃
+        尚未交付的输出缓冲并记录事件。首次取消返回 ``True``，终态请求
+        重复取消返回 ``False``。
+        """
 
         _require_identifier(request_id, "request_id")
         record = self._records.get(request_id)
@@ -363,7 +395,12 @@ class SimExecutor:
         request_id: str,  # 要手动排空输出缓冲的请求 ID。
         token_count: int,  # 本次最多交付客户端的 token 数。
     ) -> int:
-        """手动交付缓冲 token，适合模拟客户端恢复读取。"""
+        """手动模拟客户端读取输出。
+
+        返回实际交付数量；它不会超过 ``token_count`` 或当前缓冲数量。
+        如果计算已经结束且本次排空最后一个 token，请求会进入
+        ``FINISHED``。该入口用于模拟暂停读取的客户端恢复消费。
+        """
 
         _require_identifier(request_id, "request_id")
         _require_non_negative_int(token_count, "token_count")
@@ -378,7 +415,12 @@ class SimExecutor:
         self,
         reason: str = "injected_failure",  # 写入故障事件的稳定原因。
     ) -> bool:
-        """注入 worker 故障，并使所有非终态请求失败和释放 KV。"""
+        """模拟 worker 崩溃，让所有未完成请求失败。
+
+        先记录一次 worker 级故障事件，再按提交顺序将排队、计算和
+        streaming 请求切换为 ``FAILED``，释放 KV 并清空缓冲。首次注入
+        返回 ``True``，重复注入返回 ``False``。
+        """
 
         _require_identifier(reason, "reason")
         if not self._healthy:
@@ -400,7 +442,7 @@ class SimExecutor:
         self,
         request_id: str,  # 要读取执行状态的请求 ID。
     ) -> SimRequestSnapshot:
-        """返回指定请求的不可变快照。"""
+        """查看某个请求当前状态。"""
 
         _require_identifier(request_id, "request_id")
         record = self._records.get(request_id)
@@ -409,7 +451,11 @@ class SimExecutor:
         return self._request_snapshot(record)
 
     def snapshot(self) -> SimExecutorSnapshot:
-        """返回 worker、请求、事件和统计的一致快照。"""
+        """汇总 worker、队列、请求、完整事件日志和累计统计。
+
+        请求按提交顺序、事件按递增 sequence 输出，因此快照可以直接用于
+        固定 trace 重放比较。该函数只读取状态，不推进逻辑时钟。
+        """
 
         terminal_counts = {
             state: sum(record.state is state for record in self._records.values())
@@ -450,6 +496,10 @@ class SimExecutor:
         self,
         now_ns: int,  # 本轮 tick 开始时的逻辑时间。
     ) -> None:
+        """按提交顺序取消 ``cancel_at_ns`` 已到的所有非终态请求。
+
+        取消已经到达自动取消时间的请求"""
+
         for request_id in tuple(self._submission_order):
             record = self._records[request_id]
             if (
@@ -465,6 +515,10 @@ class SimExecutor:
                 )
 
     def _drain_clients(self) -> None:
+        """按请求级或默认速率消费所有非终态请求的输出缓冲。
+
+        模拟客户端从输出缓冲中读取 token"""
+
         for request_id in tuple(self._submission_order):
             record = self._records[request_id]
             if record.state in TERMINAL_SIM_STATES:
@@ -479,6 +533,11 @@ class SimExecutor:
         record: _SimRequestRecord,  # 要从输出缓冲交付 token 的请求记录。
         token_count: int,  # 本次最多交付的 token 数。
     ) -> int:
+        """从输出缓冲取出 token，标记为已交付。
+
+        缓冲为空或 ``token_count`` 为 0 时返回 0 且不产生事件。
+        """
+
         delivered = min(record.buffered_tokens, token_count)
         if delivered == 0:
             return 0
@@ -494,6 +553,12 @@ class SimExecutor:
         return delivered
 
     def _fill_batch(self) -> None:
+        """按 FIFO 将排队请求补入空闲 active slot，并开始 prefill。
+
+        零 prompt 请求会立即完成 prefill，但 decode 仍从后续推进阶段开始；
+        这使同一 tick 的状态变化保持稳定且易于重放。
+        """
+
         while self._queued and len(self._active) < self._config.max_batch_size:
             request_id = self._queued.popleft()
             record = self._records[request_id]
@@ -509,6 +574,11 @@ class SimExecutor:
         self,
         record: _SimRequestRecord,  # 当前处于 PREFILLING 的请求记录。
     ) -> None:
+        """处理一部分 prompt token，并增长 KV。
+
+        达到完整 prompt 长度后调用 ``_complete_prefill`` 切换阶段。
+        """
+
         remaining = record.request.prompt_tokens - record.prompt_tokens_processed
         processed = min(self._config.prefill_tokens_per_tick, remaining)
         record.prompt_tokens_processed += processed
@@ -526,6 +596,8 @@ class SimExecutor:
         self,
         record: _SimRequestRecord,  # 已完成全部 prompt token 的请求记录。
     ) -> None:
+        """记录 prefill 完成，并切换到 decode 或直接结束零输出计算。"""
+
         self._emit(
             SimEventKind.PREFILL_COMPLETED,
             record.request.request_id,
@@ -540,6 +612,13 @@ class SimExecutor:
         self,
         record: _SimRequestRecord,  # 当前处于 DECODING 的请求记录。
     ) -> None:
+        """生成输出 token；缓冲满时记录背压。
+
+        每个生成 token 都会增长累计输出、占用客户端缓冲、重新计算 KV
+        block 并记录事件。缓冲限制阻止完整解码额度时记录 backpressure；
+        达到目标输出长度后结束计算。
+        """
+
         remaining = record.request.output_tokens - record.generated_tokens
         available_buffer = (
             self._config.output_buffer_tokens - record.buffered_tokens
@@ -576,6 +655,12 @@ class SimExecutor:
         self,
         record: _SimRequestRecord,  # 已完成 prefill/decode 计算的请求记录。
     ) -> None:
+        """从 active batch 移除已完成计算的请求并立即释放 KV。
+
+        若仍有未交付输出，请求进入 ``STREAMING``；否则直接进入
+        ``FINISHED``。因此慢客户端不会继续占用模拟计算 slot 或 KV。
+        """
+
         self._active.pop(record.request.request_id, None)
         self._release_kv(record)
         self._emit(
@@ -589,6 +674,8 @@ class SimExecutor:
             self._finish_request(record)
 
     def _finish_drained_streams(self) -> None:
+        """扫描全部请求，将输出缓冲已清空的 streaming 请求完成。"""
+
         for request_id in tuple(self._submission_order):
             self._finish_drained_stream(self._records[request_id])
 
@@ -596,6 +683,8 @@ class SimExecutor:
         self,
         record: _SimRequestRecord,  # 可能已交付全部缓冲的请求记录。
     ) -> None:
+        """缓冲为空时完成指定请求。"""
+
         if (
             record.state is SimRequestState.STREAMING
             and record.buffered_tokens == 0
@@ -606,6 +695,8 @@ class SimExecutor:
         self,
         record: _SimRequestRecord,  # 已完成计算且缓冲已排空的请求记录。
     ) -> None:
+        """把请求标记为 ``FINISHED``，记录终态时间和完成事件。"""
+
         record.state = SimRequestState.FINISHED
         record.terminal_at_ns = self._clock()
         self._emit(
@@ -619,6 +710,12 @@ class SimExecutor:
         record: _SimRequestRecord,  # 要根据 token 数更新 KV 的请求记录。
         kv_tokens: int,  # 当前需要 KV 保存的 token 总数。
     ) -> None:
+        """根据当前 token 数计算并增长逻辑 KV block。
+
+        只允许增长，不在此处缩减；block 数发生变化时更新请求峰值、记录
+        ``KV_GROWN`` 事件并刷新执行器总 KV 峰值。
+        """
+
         required_blocks = _ceil_div(kv_tokens, self._config.block_size)
         if required_blocks <= record.logical_blocks:
             return
@@ -641,6 +738,8 @@ class SimExecutor:
         self,
         record: _SimRequestRecord,  # 要释放逻辑 KV 的请求记录。
     ) -> None:
+        """生成结束、取消或故障时释放 KV。"""
+
         if record.logical_blocks == 0:
             return
         released_blocks = record.logical_blocks
@@ -658,6 +757,12 @@ class SimExecutor:
         event_kind: SimEventKind,  # 与终态对应的事件类型。
         **details: object,  # 写入终态事件的附加稳定详情。
     ) -> None:
+        """统一执行取消或故障终止所需的所有副作用。
+
+        请求会从队列和 active batch 移除，KV 被释放，未交付缓冲被丢弃，
+        随后写入指定终态、终态时间和对应事件。
+        """
+
         self._remove_from_queue(record.request.request_id)
         self._active.pop(record.request.request_id, None)
         self._release_kv(record)
@@ -670,6 +775,8 @@ class SimExecutor:
         self,
         request_id: str,  # 要从等待队列移除的请求 ID。
     ) -> None:
+        """从 FIFO 等待队列移除指定请求，并保持其余请求相对顺序。"""
+
         if request_id not in self._queued:
             return
         self._queued = deque(
@@ -682,6 +789,8 @@ class SimExecutor:
         request_id: Optional[str],  # 关联请求 ID；worker 事件为空。
         **details: object,  # 按调用顺序记录的事件详情。
     ) -> None:
+        """使用当前逻辑时间和递增序号追加一条不可变事件。"""
+
         self._events.append(
             SimEvent(
                 sequence=self._next_event_sequence,
@@ -694,9 +803,13 @@ class SimExecutor:
         self._next_event_sequence += 1
 
     def _current_logical_blocks(self) -> int:
+        """统计所有请求当前仍占用的逻辑 KV block 总数。"""
+
         return sum(record.logical_blocks for record in self._records.values())
 
     def _update_peaks(self) -> None:
+        """更新最大并发数和 KV block 峰值"""
+
         self._peak_logical_blocks = max(
             self._peak_logical_blocks,
             self._current_logical_blocks(),
@@ -710,6 +823,8 @@ class SimExecutor:
     def _request_snapshot(
         record: _SimRequestRecord,  # 要转换为不可变快照的内部请求记录。
     ) -> SimRequestSnapshot:
+        """复制内部可变字段，生成不会泄露执行器状态的请求快照。"""
+
         return SimRequestSnapshot(
             request_id=record.request.request_id,
             state=record.state,
@@ -728,6 +843,8 @@ def _ceil_div(
     dividend: int,  # 被除数。
     divisor: int,  # 正整数除数。
 ) -> int:
+    """对非负整数执行向上整除；零 token 对应零个逻辑 block。"""
+
     if dividend == 0:
         return 0
     return (dividend + divisor - 1) // divisor
@@ -737,6 +854,8 @@ def _require_identifier(
     value: str,  # 要校验的标识符值。
     field_name: str,  # 错误消息中使用的字段名称。
 ) -> None:
+    """要求标识符是非空字符串，否则抛出稳定配置异常。"""
+
     if type(value) is not str or not value:
         raise SimExecutorError(
             "{0} must be a non-empty string".format(field_name)
@@ -747,6 +866,8 @@ def _require_positive_int(
     value: int,  # 要校验的正整数值。
     field_name: str,  # 错误消息中使用的字段名称。
 ) -> None:
+    """要求值是正整数并显式拒绝布尔值。"""
+
     if type(value) is not int or value < 1:
         raise SimExecutorError(
             "{0} must be a positive integer".format(field_name)
@@ -757,6 +878,8 @@ def _require_non_negative_int(
     value: int,  # 要校验的非负整数值。
     field_name: str,  # 错误消息中使用的字段名称。
 ) -> None:
+    """要求值是非负整数并显式拒绝布尔值。"""
+
     if type(value) is not int or value < 0:
         raise SimExecutorError(
             "{0} must be a non-negative integer".format(field_name)
