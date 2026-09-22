@@ -51,12 +51,12 @@ class KVModelSpec:
         context_limit: 服务实际允许的最大上下文 token 数。
     """
 
-    num_hidden_layers: int
-    num_key_value_heads: int
-    head_dim: int
-    dtype: str
-    block_size: int
-    context_limit: int
+    num_hidden_layers: int  # Transformer 隐藏层数量。
+    num_key_value_heads: int  # 每层参与 KV Cache 的 KV head 数。
+    head_dim: int  # 每个 KV head 的维度。
+    dtype: str  # KV Cache 标量数据类型。
+    block_size: int  # 一个逻辑 KV block 容纳的 token 数。
+    context_limit: int  # 服务允许的最大上下文 token 数。
 
     def __post_init__(self) -> None:
         """校验正整数结构字段并规范化 dtype 别名。"""
@@ -82,11 +82,11 @@ class KVModelSpec:
     @classmethod
     def from_model_baseline(
         cls,
-        baseline: ModelBaseline,
+        baseline: ModelBaseline,  # 已校验并固定版本的模型基线。
         *,
-        dtype: str,
-        block_size: int,
-        context_limit: int | None = None,
+        dtype: str,  # 实际用于 KV Cache 的数据类型。
+        block_size: int,  # 执行器或模拟器采用的 token block 大小。
+        context_limit: int | None = None,  # 可选的服务上下文上限。
     ) -> KVModelSpec:
         """从已校验模型基线创建规划配置。
 
@@ -138,24 +138,24 @@ class KVRequestPlan:
     ``padding_tokens`` 对应的空间。
     """
 
-    prompt_tokens: int
-    expected_output_tokens: int
-    total_tokens: int
-    logical_blocks: int
-    allocated_tokens: int
-    padding_tokens: int
-    theoretical_bytes: int
+    prompt_tokens: int  # 输入中需要保留 KV 的 token 数。
+    expected_output_tokens: int  # 策略预计生成并保留的输出 token 数。
+    total_tokens: int  # 输入与预计输出 token 总数。
+    logical_blocks: int  # 按完整 block 向上取整后的逻辑块数。
+    allocated_tokens: int  # 所有逻辑块合计可容纳的 token 数。
+    padding_tokens: int  # 最后一个 block 中未使用的 token 槽位数。
+    theoretical_bytes: int  # 这些完整 block 的理论 KV 字节数。
 
 
 @dataclass(frozen=True)
 class KVCapacityPlan:
     """把明确的 KV 专用字节预算换算成完整 block 后的容量结果。"""
 
-    usable_kv_bytes: int
-    logical_blocks: int
-    token_capacity: int
-    allocated_bytes: int
-    unused_bytes: int
+    usable_kv_bytes: int  # 明确可供 KV 使用的字节预算。
+    logical_blocks: int  # 预算可容纳的完整逻辑 block 数。
+    token_capacity: int  # 完整逻辑 block 对应的 token 容量。
+    allocated_bytes: int  # 完整逻辑 block 实际计入的字节数。
+    unused_bytes: int  # 无法组成完整 block 的尾部字节数。
 
 
 class KVPlanner:
@@ -165,7 +165,10 @@ class KVPlanner:
         spec: 已校验的模型 KV 规格。
     """
 
-    def __init__(self, spec: KVModelSpec) -> None:
+    def __init__(
+        self,
+        spec: KVModelSpec,  # 已校验的模型 KV 规格。
+    ) -> None:
         if not isinstance(spec, KVModelSpec):
             raise TypeError("spec must be a KVModelSpec")
         self._spec = spec
@@ -217,8 +220,8 @@ class KVPlanner:
 
     def plan_request(
         self,
-        prompt_tokens: int,
-        expected_output_tokens: int,
+        prompt_tokens: int,  # tokenization 后需要保留 KV 的输入 token 数。
+        expected_output_tokens: int,  # 策略预计生成的输出 token 数。
     ) -> KVRequestPlan:
         """按完整 block 为一个请求规划逻辑 reservation。
 
@@ -266,7 +269,7 @@ class KVPlanner:
 
     def plan_capacity(
         self,
-        usable_kv_bytes: int | None,
+        usable_kv_bytes: int | None,  # 明确可供 KV 使用的字节预算。
     ) -> KVCapacityPlan:
         """把明确的 KV 专用字节预算换算为逻辑容量。
 
@@ -302,7 +305,9 @@ class KVPlanner:
         )
 
 
-def _normalize_dtype(dtype: str) -> str:
+def _normalize_dtype(
+    dtype: str,  # 要规范化并验证的 KV 数据类型名称。
+) -> str:
     """把常用 dtype 别名转换为受支持的规范名称。"""
 
     normalized = dtype.strip().lower()
@@ -317,7 +322,10 @@ def _normalize_dtype(dtype: str) -> str:
     return normalized
 
 
-def _validate_non_negative_int(value: int, field_name: str) -> None:
+def _validate_non_negative_int(
+    value: int,  # 要校验的非负整数值。
+    field_name: str,  # 错误消息中使用的字段名称。
+) -> None:
     """验证 token 计数等字段是非负整数，并拒绝 bool。"""
 
     if type(value) is not int or value < 0:
@@ -326,7 +334,10 @@ def _validate_non_negative_int(value: int, field_name: str) -> None:
         )
 
 
-def _ceil_div(dividend: int, divisor: int) -> int:
+def _ceil_div(
+    dividend: int,  # 被除数。
+    divisor: int,  # 正整数除数。
+) -> int:
     """执行仅适用于非负整数的无浮点向上整除。"""
 
     return (dividend + divisor - 1) // divisor

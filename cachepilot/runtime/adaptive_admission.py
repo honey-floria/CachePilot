@@ -57,11 +57,11 @@ class AdaptiveAdmissionConfig:
             无界增长。
     """
 
-    strict: StrictAdmissionConfig
-    prompt_bucket_boundaries: Tuple[int, ...]
-    min_samples_per_bucket: int
-    safety_margin_tokens: int
-    max_samples_per_bucket: int = 1000
+    strict: StrictAdmissionConfig  # 复用的全局、tenant 和队列硬限制。
+    prompt_bucket_boundaries: Tuple[int, ...]  # 严格递增的 prompt token 桶上界。
+    min_samples_per_bucket: int  # 启用 P95 估算前每桶所需的最少样本数。
+    safety_margin_tokens: int  # 添加到 P95 上的固定输出 token 安全余量。
+    max_samples_per_bucket: int = 1000  # 每个历史桶保留的最近样本上限。
 
     def __post_init__(self) -> None:
         """校验样本窗口与严格递增的 prompt 分桶边界。"""
@@ -99,24 +99,24 @@ class AdaptiveAdmissionConfig:
 class GrowthDecision:
     """一次运行中 reservation 增长检查的结果快照。"""
 
-    request_id: str
-    status: GrowthStatus
-    reason: GrowthReason
-    generated_output_tokens: int
-    reserved_output_tokens: int
-    reserved_blocks: int
+    request_id: str  # 本次增长检查对应的请求 ID。
+    status: GrowthStatus  # 继续生成或必须停止的状态。
+    reason: GrowthReason  # 产生增长决策的机器可读原因。
+    generated_output_tokens: int  # 当前已生成的输出 token 总数。
+    reserved_output_tokens: int  # 当前 reservation 覆盖的输出 token 数。
+    reserved_blocks: int  # 当前 reservation 占用的逻辑 KV block 数。
 
 
 @dataclass(frozen=True)
 class AdaptiveAdmissionSnapshot:
     """Adaptive 估算质量与各历史桶样本量的观测快照。"""
 
-    fallback_count: int
-    estimation_count: int
-    underestimation_count: int
-    signed_error_tokens: int
-    absolute_error_tokens: int
-    bucket_sample_counts: Tuple[Tuple[str, int, int], ...]
+    fallback_count: int  # 因样本不足回退 Strict 的累计次数。
+    estimation_count: int  # 已记录最终估算误差的请求数。
+    underestimation_count: int  # 首次估计低于实际输出的请求数。
+    signed_error_tokens: int  # 实际值减首次估计值的累计有符号误差。
+    absolute_error_tokens: int  # 首次估计绝对误差的累计 token 数。
+    bucket_sample_counts: Tuple[Tuple[str, int, int], ...]  # 各 tenant/桶样本数。
 
 
 class AdaptiveAdmissionController(StrictAdmissionController):
@@ -129,8 +129,8 @@ class AdaptiveAdmissionController(StrictAdmissionController):
 
     def __init__(
         self,
-        planner: KVPlanner,
-        config: AdaptiveAdmissionConfig,
+        planner: KVPlanner,  # 逻辑 KV block 规划器。
+        config: AdaptiveAdmissionConfig,  # Strict 硬限制和历史估算配置。
     ) -> None:
         if not isinstance(config, AdaptiveAdmissionConfig):
             raise TypeError("config must be an AdaptiveAdmissionConfig")
@@ -151,9 +151,9 @@ class AdaptiveAdmissionController(StrictAdmissionController):
 
     def observe_output(
         self,
-        tenant_id: str,
-        prompt_tokens: int,
-        output_tokens: int,
+        tenant_id: str,  # 样本所属 tenant ID。
+        prompt_tokens: int,  # 用于选择长度桶的输入 token 数。
+        output_tokens: int,  # 样本实际生成的输出 token 数。
     ) -> None:
         """记录一个已知完成样本，供后续请求估算使用。
 
@@ -175,8 +175,8 @@ class AdaptiveAdmissionController(StrictAdmissionController):
 
     def reserve_generated_tokens(
         self,
-        request_id: str,
-        generated_output_tokens: int,
+        request_id: str,  # 已接纳且活跃的请求 ID。
+        generated_output_tokens: int,  # 截至当前已生成的输出 token 总数。
     ) -> GrowthDecision:
         """生成增长时扩展 reservation，硬容量不足则要求停止。
 
@@ -269,7 +269,11 @@ class AdaptiveAdmissionController(StrictAdmissionController):
                 GrowthReason.RESERVATION_GROWN,
             )
 
-    def complete(self, request_id: str, actual_output_tokens: int) -> bool:
+    def complete(
+        self,
+        request_id: str,  # 已接纳且仍活跃的请求 ID。
+        actual_output_tokens: int,  # 请求最终实际生成的输出 token 数。
+    ) -> bool:
         """记录估算误差和历史样本，然后释放请求 reservation。
 
         Args:
@@ -337,10 +341,10 @@ class AdaptiveAdmissionController(StrictAdmissionController):
 
     def _build_request(
         self,
-        request_id: str,
-        tenant_id: str,
-        prompt_tokens: int,
-        max_new_tokens: int,
+        request_id: str,  # 请求唯一标识。
+        tenant_id: str,  # 请求所属 tenant。
+        prompt_tokens: int,  # 输入 token 数。
+        max_new_tokens: int,  # 客户端声明的最大输出 token 数。
     ) -> _AdmissionRequest:
         """使用 P95 或 Strict 回退值创建请求的初始 reservation 计划。"""
 
@@ -374,9 +378,9 @@ class AdaptiveAdmissionController(StrictAdmissionController):
 
     def _record_history_locked(
         self,
-        tenant_id: str,
-        prompt_tokens: int,
-        output_tokens: int,
+        tenant_id: str,  # 样本所属 tenant。
+        prompt_tokens: int,  # 样本输入 token 数。
+        output_tokens: int,  # 样本实际输出 token 数。
     ) -> None:
         """调用方持锁时追加样本，并按 FIFO 裁剪为固定窗口。"""
 
@@ -387,7 +391,10 @@ class AdaptiveAdmissionController(StrictAdmissionController):
         if excess > 0:
             del samples[:excess]
 
-    def _bucket_for(self, prompt_tokens: int) -> int:
+    def _bucket_for(
+        self,
+        prompt_tokens: int,  # 要映射到长度桶的输入 token 数。
+    ) -> int:
         """返回 prompt 所属桶索引；最后一桶表示溢出区间。"""
 
         for index, boundary in enumerate(
@@ -399,10 +406,10 @@ class AdaptiveAdmissionController(StrictAdmissionController):
 
     @staticmethod
     def _growth_decision(
-        request: _AdmissionRequest,
-        generated_output_tokens: int,
-        status: GrowthStatus,
-        reason: GrowthReason,
+        request: _AdmissionRequest,  # 当前 reservation 的内部请求记录。
+        generated_output_tokens: int,  # 当前已生成的输出 token 总数。
+        status: GrowthStatus,  # 增长检查状态。
+        reason: GrowthReason,  # 增长检查原因。
     ) -> GrowthDecision:
         """用请求当前 reservation 构造不可变增长决策。"""
 
@@ -416,7 +423,10 @@ class AdaptiveAdmissionController(StrictAdmissionController):
         )
 
 
-def _nearest_rank_percentile(samples: Tuple[int, ...] | List[int], value: float) -> int:
+def _nearest_rank_percentile(
+    samples: Tuple[int, ...] | List[int],  # 用于计算分位数的整数样本。
+    value: float,  # 取值在 0 到 1 之间的目标分位比例。
+) -> int:
     """按实验协议的 nearest-rank 定义计算分位数，不做插值。"""
 
     ordered = sorted(samples)

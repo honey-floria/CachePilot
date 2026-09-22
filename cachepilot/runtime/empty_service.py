@@ -23,7 +23,11 @@ class EmptyServiceHandler(BaseHTTPRequestHandler):
 
     server_version = "CachePilotEmptyService/0.1"
 
-    def _write_json(self, status: int, payload: Mapping[str, Any]) -> None:
+    def _write_json(
+        self,
+        status: int,  # 要返回的 HTTP 状态码。
+        payload: Mapping[str, Any],  # 可由 json.dumps 序列化的响应对象。
+    ) -> None:
         """序列化并写出一份带准确 Content-Length 的 UTF-8 JSON 响应。
 
         Args:
@@ -58,7 +62,11 @@ class EmptyServiceHandler(BaseHTTPRequestHandler):
             return
         self._write_json(404, {"error": {"code": "not_found"}})
 
-    def log_message(self, format: str, *args: object) -> None:
+    def log_message(
+        self,
+        format: str,  # 基类提供的日志格式字符串。
+        *args: object,  # 基类传入的日志格式化参数。
+    ) -> None:
         """关闭逐请求 stderr 日志，保持 Colab 验收输出稳定。"""
 
         # 签名必须与 BaseHTTPRequestHandler 一致，不能删除未使用参数。
@@ -66,7 +74,8 @@ class EmptyServiceHandler(BaseHTTPRequestHandler):
 
 
 def create_server(
-    host: str = "127.0.0.1", port: int = 8000
+    host: str = "127.0.0.1",  # 服务监听地址。
+    port: int = 8000,  # 服务监听端口；0 表示由系统选择空闲端口。
 ) -> ThreadingHTTPServer:
     """创建但不启动空服务。
 

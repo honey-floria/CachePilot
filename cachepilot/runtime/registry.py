@@ -49,11 +49,11 @@ class RequestSnapshot:
         events: 从 RECEIVED 开始的不可变状态事件序列。
     """
 
-    request: ValidatedChatRequest
-    state: RequestState
-    terminal: bool
-    emitted_token_count: int
-    events: Tuple[StateTransition, ...]
+    request: ValidatedChatRequest  # Gateway 已校验并规范化的请求。
+    state: RequestState  # 当前生命周期状态。
+    terminal: bool  # 当前状态是否为不可逆终态。
+    emitted_token_count: int  # 已登记的输出 token 事件数。
+    events: Tuple[StateTransition, ...]  # 不可变状态事件序列。
 
     @property
     def request_id(self) -> str:
@@ -72,9 +72,9 @@ class RequestSnapshot:
 class _RegistryEntry:
     """Registry 内部条目；绑定请求、幂等指纹和独立状态机。"""
 
-    request: ValidatedChatRequest
-    fingerprint: str
-    machine: RequestStateMachine
+    request: ValidatedChatRequest  # 已校验并规范化的请求。
+    fingerprint: str  # 用于幂等内容一致性检查的请求指纹。
+    machine: RequestStateMachine  # 该请求独立拥有的生命周期状态机。
 
 
 class RequestRegistry:
@@ -85,7 +85,10 @@ class RequestRegistry:
             ``None`` 表示 Registry 只记账，不在此层设置容量上限。
     """
 
-    def __init__(self, resource_capacity_blocks: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        resource_capacity_blocks: Optional[int] = None,  # 可选逻辑 KV 容量。
+    ) -> None:
         self._lock = threading.Lock()
         self._requests: Dict[str, _RegistryEntry] = {}
         self._idempotency_keys: Dict[Tuple[str, str, str], str] = {}
@@ -93,8 +96,8 @@ class RequestRegistry:
 
     def register(
         self,
-        request: ValidatedChatRequest,
-        received_event_id: Optional[str] = None,
+        request: ValidatedChatRequest,  # Gateway 已验证并规范化的聊天请求。
+        received_event_id: Optional[str] = None,  # 可选 RECEIVED 事件 ID。
     ) -> ClaimResult:
         """把一个已经通过请求校验的 ValidatedChatRequest
         注册到 Registry，并处理重复请求和幂等请求。
@@ -160,7 +163,10 @@ class RequestRegistry:
                 self._idempotency_keys[idempotency_scope] = request.request_id
             return ClaimResult(ClaimStatus.ACCEPTED, request.request_id)
 
-    def get(self, request_id: str) -> RequestSnapshot:
+    def get(
+        self,
+        request_id: str,  # 要查询的请求 ID。
+    ) -> RequestSnapshot:
         """按 request ID 返回当前状态与不可变事件日志快照。
 
         Raises:
@@ -170,7 +176,9 @@ class RequestRegistry:
         return self._snapshot(self._entry(request_id))
 
     def get_for_tenant(
-        self, request_id: str, tenant_id: str
+        self,
+        request_id: str,  # 要查询的请求 ID。
+        tenant_id: str,  # 发起查询且必须拥有该请求的 tenant ID。
     ) -> Optional[RequestSnapshot]:
         """按租户安全查询请求。
 
@@ -185,7 +193,9 @@ class RequestRegistry:
         return self._snapshot(entry)
 
     def get_by_idempotency_key(
-        self, tenant_id: str, idempotency_key: str
+        self,
+        tenant_id: str,  # 幂等键所属 tenant ID。
+        idempotency_key: str,  # 要查询的租户作用域幂等键。
     ) -> Optional[RequestSnapshot]:
         """按 tenant 与聊天接口作用域的幂等键查询原始请求。"""
 
@@ -197,9 +207,9 @@ class RequestRegistry:
 
     def transition(
         self,
-        request_id: str,
-        target: RequestState,
-        event_id: str,
+        request_id: str,  # 要切换状态的请求 ID。
+        target: RequestState,  # 希望进入的生命周期状态。
+        event_id: str,  # 支持幂等重放的唯一状态事件 ID。
     ) -> TransitionResult:
         """让指定请求从当前状态切换到目标状态，并记录这次状态变化
 
@@ -227,7 +237,11 @@ class RequestRegistry:
             self._release_if_present(request_id)
         return result
 
-    def record_token_emission(self, request_id: str, event_id: str) -> bool:
+    def record_token_emission(
+        self,
+        request_id: str,  # 正在执行的请求 ID。
+        event_id: str,  # 本次 token 输出的唯一事件 ID。
+    ) -> bool:
         """登记 token 输出事件，并决定是否真正发送 token。
 
         Args:
@@ -237,7 +251,11 @@ class RequestRegistry:
 
         return self._entry(request_id).machine.record_token_emission(event_id)
 
-    def reserve(self, request_id: str, logical_blocks: int) -> ResourceLeaseSnapshot:
+    def reserve(
+        self,
+        request_id: str,  # 已进入 ADMITTED 状态的请求 ID。
+        logical_blocks: int,  # KV Planner 给出的逻辑 block 数。
+    ) -> ResourceLeaseSnapshot:
         """为处于 ADMITTED 状态的请求申请逻辑 KV reservation。
 
         Args:
@@ -255,7 +273,9 @@ class RequestRegistry:
         return self._resources.reserve(request_id, logical_blocks)
 
     def grow_reservation(
-        self, request_id: str, additional_blocks: int
+        self,
+        request_id: str,  # 已持有活跃 reservation 的请求 ID。
+        additional_blocks: int,  # 本次额外申请的逻辑 block 数。
     ) -> ResourceLeaseSnapshot:
         """为长尾生成增长逻辑 KV reservation。
 
@@ -265,7 +285,9 @@ class RequestRegistry:
         return self._resources.grow(request_id, additional_blocks)
 
     def attach_physical_handle(
-        self, request_id: str, handle: object
+        self,
+        request_id: str,  # 已持有资源租约的请求 ID。
+        handle: object,  # 执行器返回的可哈希物理资源标识。
     ) -> ResourceLeaseSnapshot:
         """绑定执行器物理 handle，并与逻辑 block 分开记账。
 
@@ -276,17 +298,26 @@ class RequestRegistry:
 
         return self._resources.attach_physical_handle(request_id, handle)
 
-    def release_resources(self, request_id: str) -> ResourceLeaseSnapshot:
+    def release_resources(
+        self,
+        request_id: str,  # 要显式释放资源的请求 ID。
+    ) -> ResourceLeaseSnapshot:
         """显式释放资源；重复调用安全且不会重复扣减总量。"""
 
         return self._resources.release(request_id)
 
-    def resource_snapshot(self, request_id: str) -> ResourceLeaseSnapshot:
+    def resource_snapshot(
+        self,
+        request_id: str,  # 要读取资源租约快照的请求 ID。
+    ) -> ResourceLeaseSnapshot:
         """读取请求的资源租约快照，不改变状态或所有权。"""
 
         return self._resources.snapshot(request_id)
 
-    def _release_if_present(self, request_id: str) -> None:
+    def _release_if_present(
+        self,
+        request_id: str,  # 进入终态并应尝试回收资源的请求 ID。
+    ) -> None:
         """终态清理钩子；没有租约或已释放时静默结束。"""
 
         try:
@@ -294,7 +325,10 @@ class RequestRegistry:
         except ResourceLeaseError:
             return
 
-    def _entry(self, request_id: str) -> _RegistryEntry:
+    def _entry(
+        self,
+        request_id: str,  # 要查找并验证的请求 ID。
+    ) -> _RegistryEntry:
         """校验 ID 并取得内部条目，不把可变容器暴露给调用方。"""
 
         if type(request_id) is not str or not request_id:
@@ -308,7 +342,9 @@ class RequestRegistry:
         return entry
 
     @staticmethod
-    def _snapshot(entry: _RegistryEntry) -> RequestSnapshot:
+    def _snapshot(
+        entry: _RegistryEntry,  # 要转换为只读视图的内部条目。
+    ) -> RequestSnapshot:
         """把状态机快照与规范化请求组合为只读视图。"""
 
         machine = entry.machine.snapshot()
@@ -322,7 +358,7 @@ class RequestRegistry:
 
     @staticmethod
     def _idempotency_scope(
-        request: ValidatedChatRequest,
+        request: ValidatedChatRequest,  # 要提取租户幂等作用域的请求。
     ) -> Optional[Tuple[str, str, str]]:
         """构造 tenant + API path + key 的隔离作用域。"""
 

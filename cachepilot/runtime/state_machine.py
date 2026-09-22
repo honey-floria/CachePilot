@@ -71,28 +71,28 @@ class StateTransition:
     ``previous_state`` 仅在初始 RECEIVED 事件中为 ``None``。
     """
 
-    event_id: str
-    previous_state: Optional[RequestState]
-    state: RequestState
+    event_id: str  # 提交该状态转换的唯一事件 ID。
+    previous_state: Optional[RequestState]  # 转换前状态；初始事件为空。
+    state: RequestState  # 转换后的请求状态。
 
 
 @dataclass(frozen=True)
 class TransitionResult:
     """状态提交结果；``applied=False`` 表示同一事件的幂等重放。"""
 
-    transition: StateTransition
-    applied: bool
-    current_state: RequestState
+    transition: StateTransition  # 本次调用对应的状态转换记录。
+    applied: bool  # 是否首次应用该事件。
+    current_state: RequestState  # 调用完成后的当前请求状态。
 
 
 @dataclass(frozen=True)
 class StateMachineSnapshot:
     """同一时刻读取的状态、终态标记、token 计数和事件日志。"""
 
-    state: RequestState
-    terminal: bool
-    emitted_token_count: int
-    transitions: Tuple[StateTransition, ...]
+    state: RequestState  # 快照时的当前请求状态。
+    terminal: bool  # 当前状态是否为不可逆终态。
+    emitted_token_count: int  # 已成功登记的输出 token 事件数。
+    transitions: Tuple[StateTransition, ...]  # 不可变状态转换日志。
 
 
 class RequestStateMachine:
@@ -103,7 +103,11 @@ class RequestStateMachine:
         received_event_id: 创建请求时 RECEIVED 事件的唯一 ID。
     """
 
-    def __init__(self, request_id: str, received_event_id: str) -> None:
+    def __init__(
+        self,
+        request_id: str,  # 状态机所属的非空请求 ID。
+        received_event_id: str,  # 创建 RECEIVED 状态的唯一事件 ID。
+    ) -> None:
         self._validate_identifier(request_id, "request_id")
         self._validate_identifier(received_event_id, "received_event_id")
         self._request_id = request_id
@@ -167,7 +171,9 @@ class RequestStateMachine:
             )
 
     def transition(
-        self, target: RequestState, event_id: str
+        self,
+        target: RequestState,  # 希望进入的目标请求状态。
+        event_id: str,  # 本次状态事件的唯一 ID。
     ) -> TransitionResult:
         """原子应用状态事件。
 
@@ -229,7 +235,10 @@ class RequestStateMachine:
                 current_state=self._state,
             )
 
-    def record_token_emission(self, event_id: str) -> bool:
+    def record_token_emission(
+        self,
+        event_id: str,  # 本次 token 输出事件的唯一 ID。
+    ) -> bool:
         """登记一次 token 输出，并告诉调用方是否应真正发送。
 
         Args:
@@ -267,7 +276,10 @@ class RequestStateMachine:
             return True
 
     @staticmethod
-    def _can_transition(current: RequestState, target: RequestState) -> bool:
+    def _can_transition(
+        current: RequestState,  # 转换前的当前状态。
+        target: RequestState,  # 希望进入的目标状态。
+    ) -> bool:
         """判断转换是否合法；非终态均可直接进入错误终态。"""
 
         if current in TERMINAL_STATES:
@@ -277,7 +289,10 @@ class RequestStateMachine:
         return _MAIN_PATH.get(current) is target
 
     @staticmethod
-    def _validate_identifier(value: str, field: str) -> None:
+    def _validate_identifier(
+        value: str,  # 要校验的请求或事件标识符。
+        field: str,  # 错误消息中使用的字段名称。
+    ) -> None:
         """验证请求 ID 和事件 ID 均为非空字符串。"""
 
         if type(value) is not str or not value:

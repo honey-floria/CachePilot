@@ -59,9 +59,9 @@ class TenantAdmissionLimits:
             不允许排队。
     """
 
-    max_active_sequences: int
-    max_active_tokens: int
-    max_queued_requests: int
+    max_active_sequences: int  # tenant 同时活跃的最大请求数。
+    max_active_tokens: int  # tenant 活跃 reservation 的最大 token 总数。
+    max_queued_requests: int  # tenant 允许排队的最大请求数。
 
     def __post_init__(self) -> None:
         """拒绝负数、零并发和零 token 等无意义配置。"""
@@ -85,12 +85,12 @@ class StrictAdmissionConfig:
         retry_after_ms: 队列满拒绝时提供给客户端的建议重试间隔。
     """
 
-    total_blocks: int
-    safety_blocks: int
-    max_active_sequences: int
-    max_queued_requests: int
-    tenant_limits: Mapping[str, TenantAdmissionLimits]
-    retry_after_ms: int = 1000
+    total_blocks: int  # 控制层可管理的逻辑 KV block 总数。
+    safety_blocks: int  # 永不分配给请求的安全余量 block 数。
+    max_active_sequences: int  # 全局同时活跃的最大请求数。
+    max_queued_requests: int  # 全局允许排队的最大请求数。
+    tenant_limits: Mapping[str, TenantAdmissionLimits]  # 各 tenant 的硬限制。
+    retry_after_ms: int = 1000  # 队列满拒绝时建议客户端等待的毫秒数。
 
     def __post_init__(self) -> None:
         """校验全局限制，并复制 tenant 映射避免引用调用方容器。"""
@@ -132,41 +132,41 @@ class AdmissionDecision:
     仅用于队列已满等客户端稍后重试可能成功的拒绝。
     """
 
-    request_id: str
-    tenant_id: str
-    status: AdmissionStatus
-    reason: AdmissionReason
-    plan: Optional[KVRequestPlan]
-    estimated_output_tokens: Optional[int] = None
-    fallback_to_strict: bool = False
-    retry_after_ms: Optional[int] = None
+    request_id: str  # 本次决策对应的请求 ID。
+    tenant_id: str  # 请求所属 tenant。
+    status: AdmissionStatus  # 接纳、排队或拒绝状态。
+    reason: AdmissionReason  # 产生该决策的机器可读原因。
+    plan: Optional[KVRequestPlan]  # 请求的逻辑 KV 规划；无有效规划时为空。
+    estimated_output_tokens: Optional[int] = None  # 本次预留采用的输出估计。
+    fallback_to_strict: bool = False  # Adaptive 是否因样本不足回退 Strict。
+    retry_after_ms: Optional[int] = None  # 拒绝后建议重试的等待毫秒数。
 
 
 @dataclass(frozen=True)
 class AdmissionSnapshot:
     """同一临界区内读取的全局与 tenant 准入账本快照。"""
 
-    active_sequences: int
-    queued_requests: int
-    reserved_blocks: int
-    usable_blocks: int
-    tenant_active_sequences: Tuple[Tuple[str, int], ...]
-    tenant_active_tokens: Tuple[Tuple[str, int], ...]
-    tenant_queued_requests: Tuple[Tuple[str, int], ...]
+    active_sequences: int  # 当前全局活跃请求数。
+    queued_requests: int  # 当前全局排队请求数。
+    reserved_blocks: int  # 当前已预留的逻辑 KV block 数。
+    usable_blocks: int  # 扣除安全余量后的可用 block 总数。
+    tenant_active_sequences: Tuple[Tuple[str, int], ...]  # tenant 活跃数。
+    tenant_active_tokens: Tuple[Tuple[str, int], ...]  # tenant 活跃 token 数。
+    tenant_queued_requests: Tuple[Tuple[str, int], ...]  # tenant 排队数。
 
 
 @dataclass
 class _AdmissionRequest:
     """Controller 内部请求记录；Adaptive 子类会更新当前 reservation。"""
 
-    request_id: str
-    tenant_id: str
-    prompt_tokens: int
-    max_new_tokens: int
-    plan: KVRequestPlan
-    initial_estimated_output_tokens: int
-    estimated_output_tokens: int
-    fallback_to_strict: bool
+    request_id: str  # 请求唯一标识。
+    tenant_id: str  # 请求所属 tenant。
+    prompt_tokens: int  # 输入 token 数。
+    max_new_tokens: int  # 客户端声明的最大输出 token 数。
+    plan: KVRequestPlan  # 当前 reservation 对应的 KV 规划。
+    initial_estimated_output_tokens: int  # 首次准入使用的输出估计。
+    estimated_output_tokens: int  # 当前 reservation 使用的输出估计。
+    fallback_to_strict: bool  # 是否因样本不足使用 Strict 估计。
 
 
 class StrictAdmissionController:
@@ -181,7 +181,11 @@ class StrictAdmissionController:
         Scheduler 选择某个 request ID 后再调用 ``retry_queued``。
     """
 
-    def __init__(self, planner: KVPlanner, config: StrictAdmissionConfig) -> None:
+    def __init__(
+        self,
+        planner: KVPlanner,  # 把 token 需求换算为逻辑 KV block 的规划器。
+        config: StrictAdmissionConfig,  # 全局容量、队列和 tenant 限制。
+    ) -> None:
         if not isinstance(planner, KVPlanner):
             raise TypeError("planner must be a KVPlanner")
         if not isinstance(config, StrictAdmissionConfig):
@@ -205,10 +209,10 @@ class StrictAdmissionController:
 
     def submit(
         self,
-        request_id: str,
-        tenant_id: str,
-        prompt_tokens: int,
-        max_new_tokens: int,
+        request_id: str,  # 尚未进入准入账本的唯一请求 ID。
+        tenant_id: str,  # 资源配额所属 tenant ID。
+        prompt_tokens: int,  # tokenizer 计算的输入 token 数。
+        max_new_tokens: int,  # 客户端声明的最大输出 token 数。
     ) -> AdmissionDecision:
         """提交新请求；暂时容量不足时进入有界队列。
 
@@ -273,7 +277,10 @@ class StrictAdmissionController:
                 return self._admit(request)
             return self._queue_or_reject(request, limits, blocked_reason)
 
-    def retry_queued(self, request_id: str) -> AdmissionDecision:
+    def retry_queued(
+        self,
+        request_id: str,  # Scheduler 选中并要求重新评估的排队请求 ID。
+    ) -> AdmissionDecision:
         """重新评估 Scheduler 选中的一个排队请求。
 
         Args:
@@ -300,7 +307,10 @@ class StrictAdmissionController:
             self._decrement(self._tenant_queued_requests, request.tenant_id)
             return self._admit(request)
 
-    def release(self, request_id: str) -> bool:
+    def release(
+        self,
+        request_id: str,  # 要从活跃或等待账本释放的请求 ID。
+    ) -> bool:
         """释放活跃 reservation 或从等待队列移除请求。
 
         Args:
@@ -337,8 +347,8 @@ class StrictAdmissionController:
 
     def _permanent_rejection_reason(
         self,
-        request: _AdmissionRequest,
-        limits: TenantAdmissionLimits,
+        request: _AdmissionRequest,  # 要检查永久拒绝条件的内部请求。
+        limits: TenantAdmissionLimits,  # 该请求所属 tenant 的硬限制。
     ) -> Optional[AdmissionReason]:
         """返回请求自身造成的永久拒绝原因，否则返回 ``None``。"""
 
@@ -350,10 +360,10 @@ class StrictAdmissionController:
 
     def _build_request(
         self,
-        request_id: str,
-        tenant_id: str,
-        prompt_tokens: int,
-        max_new_tokens: int,
+        request_id: str,  # 请求唯一标识。
+        tenant_id: str,  # 请求所属 tenant。
+        prompt_tokens: int,  # 输入 token 数。
+        max_new_tokens: int,  # 最大输出 token 数。
     ) -> _AdmissionRequest:
         """创建 Strict 请求记录；Adaptive 子类覆盖此估算步骤。"""
 
@@ -371,8 +381,8 @@ class StrictAdmissionController:
 
     def _temporary_block_reason(
         self,
-        request: _AdmissionRequest,
-        limits: TenantAdmissionLimits,
+        request: _AdmissionRequest,  # 要检查临时阻塞条件的内部请求。
+        limits: TenantAdmissionLimits,  # 该请求所属 tenant 的硬限制。
     ) -> Optional[AdmissionReason]:
         """按稳定优先级检查当前负载造成的临时阻塞原因。"""
 
@@ -396,7 +406,10 @@ class StrictAdmissionController:
             return AdmissionReason.TENANT_CONCURRENCY
         return None
 
-    def _admit(self, request: _AdmissionRequest) -> AdmissionDecision:
+    def _admit(
+        self,
+        request: _AdmissionRequest,  # 已通过全部硬限制检查的内部请求。
+    ) -> AdmissionDecision:
         """持锁且检查通过时，原子登记 reservation 与 tenant 计数。"""
 
         self._resources.reserve(request.request_id, request.plan.logical_blocks)
@@ -412,9 +425,9 @@ class StrictAdmissionController:
 
     def _queue_or_reject(
         self,
-        request: _AdmissionRequest,
-        limits: TenantAdmissionLimits,
-        blocked_reason: AdmissionReason,
+        request: _AdmissionRequest,  # 暂时无法接纳的内部请求。
+        limits: TenantAdmissionLimits,  # 该请求所属 tenant 的队列限制。
+        blocked_reason: AdmissionReason,  # 导致请求暂时阻塞的原因。
     ) -> AdmissionDecision:
         """有空间则登记等待，否则返回带重试建议的拒绝。"""
 
@@ -440,7 +453,10 @@ class StrictAdmissionController:
         self._increment(self._tenant_queued_requests, request.tenant_id)
         return self._decision(request, AdmissionStatus.QUEUED, blocked_reason)
 
-    def _ensure_new_request_id(self, request_id: str) -> None:
+    def _ensure_new_request_id(
+        self,
+        request_id: str,  # 要检查是否从未进入准入账本的请求 ID。
+    ) -> None:
         """阻止活跃、排队或已完成 request ID 再次进入准入账本。"""
 
         if (
@@ -452,7 +468,10 @@ class StrictAdmissionController:
                 "request_id has already entered admission: {0}".format(request_id)
             )
 
-    def _release_locked(self, request_id: str) -> bool:
+    def _release_locked(
+        self,
+        request_id: str,  # 持锁状态下要清理的请求 ID。
+    ) -> bool:
         """持锁时清理活跃或排队记录，并保持所有计数同步。"""
 
         request = self._active.pop(request_id, None)
@@ -476,10 +495,10 @@ class StrictAdmissionController:
 
     @staticmethod
     def _decision(
-        request: _AdmissionRequest,
-        status: AdmissionStatus,
-        reason: AdmissionReason,
-        retry_after_ms: Optional[int] = None,
+        request: _AdmissionRequest,  # 要转换成不可变决策的内部请求。
+        status: AdmissionStatus,  # 决策状态。
+        reason: AdmissionReason,  # 决策原因。
+        retry_after_ms: Optional[int] = None,  # 可选的建议重试间隔。
     ) -> AdmissionDecision:
         """把内部请求记录转换成不会暴露可变状态的决策对象。"""
 
@@ -495,13 +514,19 @@ class StrictAdmissionController:
         )
 
     @staticmethod
-    def _increment(values: Dict[str, int], key: str) -> None:
+    def _increment(
+        values: Dict[str, int],  # 要修改的稀疏 tenant 计数器。
+        key: str,  # 要增加计数的 tenant ID。
+    ) -> None:
         """增加稀疏 tenant 计数器。"""
 
         values[key] = values.get(key, 0) + 1
 
     @staticmethod
-    def _decrement(values: Dict[str, int], key: str) -> None:
+    def _decrement(
+        values: Dict[str, int],  # 要修改的稀疏 tenant 计数器。
+        key: str,  # 要减少计数的 tenant ID。
+    ) -> None:
         """减少稀疏 tenant 计数器，并删除归零项。"""
 
         values[key] -= 1
@@ -509,21 +534,30 @@ class StrictAdmissionController:
             del values[key]
 
 
-def _require_identifier(value: str, field_name: str) -> None:
+def _require_identifier(
+    value: str,  # 要校验的标识符值。
+    field_name: str,  # 错误消息中使用的字段名称。
+) -> None:
     """验证 request/tenant 等标识为非空字符串。"""
 
     if type(value) is not str or not value:
         raise AdmissionError("{0} must be a non-empty string".format(field_name))
 
 
-def _require_positive_int(value: int, field_name: str) -> None:
+def _require_positive_int(
+    value: int,  # 要校验的整数值。
+    field_name: str,  # 错误消息中使用的字段名称。
+) -> None:
     """验证配置值为正整数，并显式拒绝 bool。"""
 
     if type(value) is not int or value < 1:
         raise AdmissionError("{0} must be a positive integer".format(field_name))
 
 
-def _require_non_negative_int(value: int, field_name: str) -> None:
+def _require_non_negative_int(
+    value: int,  # 要校验的整数值。
+    field_name: str,  # 错误消息中使用的字段名称。
+) -> None:
     """验证 token 或队列上限为非负整数，并显式拒绝 bool。"""
 
     if type(value) is not int or value < 0:

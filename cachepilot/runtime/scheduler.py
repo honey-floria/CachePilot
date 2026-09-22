@@ -66,32 +66,32 @@ class SchedulingRequest:
 class ScheduleDecision:
     """一次成功出队的稳定结果。"""
 
-    request: SchedulingRequest  # 本次被选中并移出队列的请求。
-    enqueued_at_ns: int  # 请求进入调度队列时的单调时钟纳秒值。
-    selected_at_ns: int  # 调度器选中请求时的单调时钟纳秒值。
-    queue_wait_ns: int  # 请求从入队到被选中的实际等待纳秒数。
-    starvation_promoted: bool  # 是否因达到最大饥饿时间而被强制提升。
-    virtual_start: Optional[Fraction]  # WFQ 虚拟开始标签；FCFS 中为空。
-    virtual_finish: Optional[Fraction]  # WFQ 虚拟完成标签；FCFS 中为空。
+    request: SchedulingRequest              # 本次被选中并移出队列的请求。
+    enqueued_at_ns: int                     # 请求进入调度队列时的单调时钟纳秒值。
+    selected_at_ns: int                     # 调度器选中请求时的单调时钟纳秒值。
+    queue_wait_ns: int                      # 请求从入队到被选中的实际等待纳秒数。
+    starvation_promoted: bool               # 是否因达到最大饥饿时间而被强制提升。
+    virtual_start: Optional[Fraction]       # WFQ 虚拟开始标签；FCFS 中为空。
+    virtual_finish: Optional[Fraction]      # WFQ 虚拟完成标签；FCFS 中为空。
 
 
 @dataclass(frozen=True)
 class SchedulerSnapshot:
     """同一临界区内读取的队列和 WFQ 虚拟时间。"""
 
-    queued_requests: int  # 当前所有 priority 和 tenant 的排队请求总数。
-    priority_counts: Tuple[Tuple[str, int], ...]  # 各优先级的请求数量。
-    tenant_counts: Tuple[Tuple[str, str, int], ...]  # 各租户子队列数量。
-    virtual_times: Tuple[Tuple[str, Fraction], ...]  # 各优先级 WFQ 虚拟时间。
+    queued_requests: int                                # 当前所有 priority 和 tenant 的排队请求总数。
+    priority_counts: Tuple[Tuple[str, int], ...]        # 各优先级的请求数量。
+    tenant_counts: Tuple[Tuple[str, str, int], ...]     # 各租户子队列数量。
+    virtual_times: Tuple[Tuple[str, Fraction], ...]     # 各优先级 WFQ 虚拟时间。
 
 
 @dataclass
 class _QueuedRequest:
-    request: SchedulingRequest  # 对外请求描述。
-    enqueued_at_ns: int  # 入队时的单调时钟纳秒值。
-    sequence: int  # 严格递增的入队序号，用于稳定打破平局。
-    virtual_start: Optional[Fraction] = None  # WFQ 虚拟开始标签。
-    virtual_finish: Optional[Fraction] = None  # WFQ 虚拟完成标签。
+    request: SchedulingRequest                  # 对外请求描述。
+    enqueued_at_ns: int                         # 入队时的单调时钟纳秒值。
+    sequence: int                               # 严格递增的入队序号，用于稳定打破平局。
+    virtual_start: Optional[Fraction] = None    # WFQ 虚拟开始标签。
+    virtual_finish: Optional[Fraction] = None   # WFQ 虚拟完成标签。
 
 
 class _TenantQueueScheduler:

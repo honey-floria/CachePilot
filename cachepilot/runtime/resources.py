@@ -44,11 +44,11 @@ class ResourceLeaseSnapshot:
         released: 租约是否已经执行过释放。
     """
 
-    request_id: str
-    logical_blocks: int
-    peak_logical_blocks: int
-    physical_handles: Tuple[Hashable, ...]
-    released: bool
+    request_id: str  # 拥有该租约的请求 ID。
+    logical_blocks: int  # 当前占用的逻辑 KV block 数。
+    peak_logical_blocks: int  # 请求生命周期内的逻辑 block 峰值。
+    physical_handles: Tuple[Hashable, ...]  # 执行器物理资源标识副本。
+    released: bool  # 该租约是否已经释放。
 
 
 @dataclass
@@ -63,11 +63,11 @@ class _ResourceLease:
         released: 租约是否已经执行过释放。
     """
 
-    request_id: str
-    logical_blocks: int
-    peak_logical_blocks: int
-    physical_handles: list[Hashable]
-    released: bool = False
+    request_id: str  # 拥有该租约的请求 ID。
+    logical_blocks: int  # 当前占用的逻辑 KV block 数。
+    peak_logical_blocks: int  # 历史逻辑 block 峰值。
+    physical_handles: list[Hashable]  # 当前绑定的物理资源标识。
+    released: bool = False  # 是否已经执行过一次性释放。
 
 
 class ResourceLeaseManager:
@@ -78,7 +78,10 @@ class ResourceLeaseManager:
             上限；正整数表示所有活跃租约合计不能超过该值。
     """
 
-    def __init__(self, capacity_blocks: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        capacity_blocks: Optional[int] = None,  # 可选的逻辑 KV block 总容量。
+    ) -> None:
         if capacity_blocks is not None and (
             type(capacity_blocks) is not int or capacity_blocks < 1
         ):
@@ -101,7 +104,11 @@ class ResourceLeaseManager:
         with self._lock:
             return self._total_logical_blocks
 
-    def reserve(self, request_id: str, logical_blocks: int) -> ResourceLeaseSnapshot:
+    def reserve(
+        self,
+        request_id: str,  # 要创建初始租约的唯一请求 ID。
+        logical_blocks: int,  # 初始需要预留的逻辑 block 数。
+    ) -> ResourceLeaseSnapshot:
         """为请求申请初始逻辑 reservation。
 
         Args:
@@ -136,7 +143,11 @@ class ResourceLeaseManager:
             self._total_logical_blocks += logical_blocks
             return self._snapshot(lease)
 
-    def grow(self, request_id: str, additional_blocks: int) -> ResourceLeaseSnapshot:
+    def grow(
+        self,
+        request_id: str,  # 已持有活跃租约的请求 ID。
+        additional_blocks: int,  # 本次额外申请的逻辑 block 数。
+    ) -> ResourceLeaseSnapshot:
         """增长现有逻辑 reservation，并更新历史峰值。
 
         Args:
@@ -166,7 +177,9 @@ class ResourceLeaseManager:
             return self._snapshot(lease)
 
     def attach_physical_handle(
-        self, request_id: str, handle: Hashable
+        self,
+        request_id: str,  # 已持有活跃租约的请求 ID。
+        handle: Hashable,  # 执行器用于定位物理资源的可哈希标识。
     ) -> ResourceLeaseSnapshot:
         """记录执行器分配的物理 handle，不混入逻辑容量。
 
@@ -194,7 +207,10 @@ class ResourceLeaseManager:
                 lease.physical_handles.append(handle)
             return self._snapshot(lease)
 
-    def release(self, request_id: str) -> ResourceLeaseSnapshot:
+    def release(
+        self,
+        request_id: str,  # 要一次性释放资源的请求 ID。
+    ) -> ResourceLeaseSnapshot:
         """释放逻辑 reservation 并清除物理 handle 记录。
 
         Args:
@@ -223,14 +239,20 @@ class ResourceLeaseManager:
                 lease.released = True
             return self._snapshot(lease)
 
-    def snapshot(self, request_id: str) -> ResourceLeaseSnapshot:
+    def snapshot(
+        self,
+        request_id: str,  # 要读取资源租约快照的请求 ID。
+    ) -> ResourceLeaseSnapshot:
         """读取指定请求的不可变租约快照，不改变资源所有权。"""
 
         self._validate_request_id(request_id)
         with self._lock:
             return self._snapshot(self._leases.get(request_id))
 
-    def _get_active_lease(self, request_id: str) -> _ResourceLease:
+    def _get_active_lease(
+        self,
+        request_id: str,  # 要查找的活跃租约请求 ID。
+    ) -> _ResourceLease:
         """持锁时取得未释放租约，否则抛出稳定异常。"""
 
         lease = self._leases.get(request_id)
@@ -244,7 +266,10 @@ class ResourceLeaseManager:
             )
         return lease
 
-    def _ensure_capacity(self, additional_blocks: int) -> None:
+    def _ensure_capacity(
+        self,
+        additional_blocks: int,  # 准备新增的逻辑 block 数。
+    ) -> None:
         """在调用方已持锁时检查新增 block 是否突破总容量。"""
 
         if (
@@ -260,7 +285,9 @@ class ResourceLeaseManager:
             )
 
     @staticmethod
-    def _snapshot(lease: Optional[_ResourceLease]) -> ResourceLeaseSnapshot:
+    def _snapshot(
+        lease: Optional[_ResourceLease],  # 要转换为不可变快照的内部租约。
+    ) -> ResourceLeaseSnapshot:
         """把内部可变租约转换为不会泄露可变列表的只读快照。"""
 
         if lease is None:
@@ -274,11 +301,15 @@ class ResourceLeaseManager:
         )
 
     @staticmethod
-    def _validate_request_id(request_id: str) -> None:
+    def _validate_request_id(
+        request_id: str,  # 要校验的请求 ID。
+    ) -> None:
         if type(request_id) is not str or not request_id:
             raise ValueError("request_id must be a non-empty string")
 
     @staticmethod
-    def _validate_blocks(blocks: int) -> None:
+    def _validate_blocks(
+        blocks: int,  # 要校验的逻辑 block 数。
+    ) -> None:
         if type(blocks) is not int or blocks < 1:
             raise ValueError("logical blocks must be a positive integer")
