@@ -27,6 +27,7 @@ from cachepilot.runtime.resources import (
     ResourceLeaseManager,
     ResourceLeaseSnapshot,
 )
+from cachepilot.utils import CommonUtils
 
 
 class RegistryError(ValueError):
@@ -331,8 +332,7 @@ class RequestRegistry:
     ) -> _RegistryEntry:
         """校验 ID 并取得内部条目，不把可变容器暴露给调用方。"""
 
-        if type(request_id) is not str or not request_id:
-            raise ValueError("request_id must be a non-empty string")
+        CommonUtils.require_identifier(request_id, "request_id")
         with self._lock:
             entry = self._requests.get(request_id)
         if entry is None:

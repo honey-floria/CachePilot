@@ -20,6 +20,7 @@ from cachepilot.runtime.scheduler import (
     SchedulingPriority,
     SchedulingRequest,
 )
+from cachepilot.utils import CommonUtils
 
 
 class RuntimeLoopError(ValueError):
@@ -51,9 +52,21 @@ class RuntimeLoopConfig:
     def __post_init__(self) -> None:
         """要求三项硬预算都是正整数。"""
 
-        _require_positive_int(self.max_active_sequences, "max_active_sequences")
-        _require_positive_int(self.max_batched_tokens, "max_batched_tokens")
-        _require_positive_int(self.max_kv_blocks, "max_kv_blocks")
+        CommonUtils.require_positive_int(
+            self.max_active_sequences,
+            "max_active_sequences",
+            RuntimeLoopError,
+        )
+        CommonUtils.require_positive_int(
+            self.max_batched_tokens,
+            "max_batched_tokens",
+            RuntimeLoopError,
+        )
+        CommonUtils.require_positive_int(
+            self.max_kv_blocks,
+            "max_kv_blocks",
+            RuntimeLoopError,
+        )
 
 
 @dataclass(frozen=True)
@@ -72,8 +85,12 @@ class RuntimeRequest:
     def __post_init__(self) -> None:
         """校验调度标识、token 数以及可选模拟参数。"""
 
-        _require_identifier(self.request_id, "request_id")
-        _require_identifier(self.tenant_id, "tenant_id")
+        CommonUtils.require_identifier(
+            self.request_id, "request_id", RuntimeLoopError
+        )
+        CommonUtils.require_identifier(
+            self.tenant_id, "tenant_id", RuntimeLoopError
+        )
         if isinstance(self.priority, str):
             try:
                 priority = SchedulingPriority(self.priority)
@@ -84,15 +101,26 @@ class RuntimeRequest:
             object.__setattr__(self, "priority", priority)
         elif not isinstance(self.priority, SchedulingPriority):
             raise RuntimeLoopError("priority must be interactive or batch")
-        _require_non_negative_int(self.prompt_tokens, "prompt_tokens")
-        _require_non_negative_int(self.output_tokens, "output_tokens")
-        _require_non_negative_int(self.seed, "seed")
+        CommonUtils.require_non_negative_int(
+            self.prompt_tokens, "prompt_tokens", RuntimeLoopError
+        )
+        CommonUtils.require_non_negative_int(
+            self.output_tokens, "output_tokens", RuntimeLoopError
+        )
+        CommonUtils.require_non_negative_int(
+            self.seed, "seed", RuntimeLoopError
+        )
         if self.cancel_after_ns is not None:
-            _require_non_negative_int(self.cancel_after_ns, "cancel_after_ns")
+            CommonUtils.require_non_negative_int(
+                self.cancel_after_ns,
+                "cancel_after_ns",
+                RuntimeLoopError,
+            )
         if self.client_drain_tokens_per_tick is not None:
-            _require_non_negative_int(
+            CommonUtils.require_non_negative_int(
                 self.client_drain_tokens_per_tick,
                 "client_drain_tokens_per_tick",
+                RuntimeLoopError,
             )
 
 
@@ -273,7 +301,9 @@ class RuntimeLoop:
     ) -> RuntimeLoopSnapshot:
         """持续执行调度轮次，直到等待、计算和 streaming 工作全部结束。"""
 
-        _require_positive_int(max_ticks, "max_ticks")
+        CommonUtils.require_positive_int(
+            max_ticks, "max_ticks", RuntimeLoopError
+        )
         executed = 0
         while self.has_work and executed < max_ticks:
             self.step()
@@ -393,7 +423,7 @@ class RuntimeLoop:
         self,
         executor_snapshot: SimExecutorSnapshot,  # 推进前的请求状态。
     ) -> Tuple[Tuple[str, int], ...]:
-        """轮转 active 请求并分配 batch token 与实际 KV 工作额度。"""
+        """在 active 请求之间分配本轮 token 预算。"""
 
         snapshots = {item.request_id: item for item in executor_snapshot.requests}
         active_ids = tuple(self._active)
@@ -434,7 +464,7 @@ class RuntimeLoop:
         request: RuntimeRequest,  # 请求固定 token 规模。
         snapshot: SimRequestSnapshot,  # 请求推进前状态。
     ) -> int:
-        """计算请求本 tick 在执行速率和客户端缓冲下最多需要的 token。"""
+        """计算请求本轮最多能处理多少 token。"""
 
         remaining_prompt = request.prompt_tokens - snapshot.prompt_tokens_processed
         if remaining_prompt > 0:
@@ -472,7 +502,7 @@ class RuntimeLoop:
         ) * self._executor.config.block_size
         allowed_tokens = max(0, maximum_request_tokens - current_tokens)
         allocation = min(desired_tokens, allowed_tokens)
-        projected_request_blocks = _ceil_div(
+        projected_request_blocks = CommonUtils.ceil_div(
             current_tokens + allocation,
             self._executor.config.block_size,
         )
@@ -529,7 +559,7 @@ class RuntimeLoop:
     ) -> int:
         """按 prompt + output 和执行器 block size 计算完整 reservation。"""
 
-        return _ceil_div(
+        return CommonUtils.ceil_div(
             request.prompt_tokens + request.output_tokens,
             self._executor.config.block_size,
         )
@@ -561,50 +591,3 @@ class RuntimeLoop:
             raise RuntimeLoopError("KV block hard limit exceeded")
         if budget.reserved_kv_blocks > self._config.max_kv_blocks:
             raise RuntimeLoopError("KV reservation hard limit exceeded")
-
-
-def _ceil_div(
-    dividend: int,  # 非负被除数。
-    divisor: int,  # 正整数除数。
-) -> int:
-    """对非负整数执行向上整除。"""
-
-    if dividend == 0:
-        return 0
-    return (dividend + divisor - 1) // divisor
-
-
-def _require_identifier(
-    value: str,  # 要校验的标识符。
-    field_name: str,  # 错误消息字段名称。
-) -> None:
-    """要求标识符为非空字符串。"""
-
-    if type(value) is not str or not value:
-        raise RuntimeLoopError(
-            "{0} must be a non-empty string".format(field_name)
-        )
-
-
-def _require_positive_int(
-    value: int,  # 要校验的整数值。
-    field_name: str,  # 错误消息字段名称。
-) -> None:
-    """要求值为正整数并拒绝 bool。"""
-
-    if type(value) is not int or value < 1:
-        raise RuntimeLoopError(
-            "{0} must be a positive integer".format(field_name)
-        )
-
-
-def _require_non_negative_int(
-    value: int,  # 要校验的整数值。
-    field_name: str,  # 错误消息字段名称。
-) -> None:
-    """要求值为非负整数并拒绝 bool。"""
-
-    if type(value) is not int or value < 0:
-        raise RuntimeLoopError(
-            "{0} must be a non-negative integer".format(field_name)
-        )

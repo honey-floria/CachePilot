@@ -43,6 +43,7 @@ CachePilot/
 ├── cachepilot/
 │   ├── __init__.py                    # CachePilot 控制平面包入口
 │   ├── __main__.py                    # python -m cachepilot 启动入口
+│   ├── utils.py                       # 共享参数校验与整数换算工具类
 │   ├── cache/
 │   │   ├── __init__.py                # 缓存元数据包入口
 │   │   └── prefix_index.py            # 租户隔离的逻辑前缀索引
@@ -99,7 +100,8 @@ CachePilot/
 │   │   ├── test_runtime_loop.py       # 三重预算、回收顺序和混合长度测试
 │   │   ├── test_scheduler.py          # FCFS/WFQ 顺序、公平与重放测试
 │   │   ├── test_sim_executor.py       # 模拟执行、背压、取消和故障测试
-│   │   └── test_state_machine.py      # 生命周期状态转换与幂等测试
+│   │   ├── test_state_machine.py      # 生命周期状态转换与幂等测试
+│   │   └── test_utils.py              # 共享工具类校验与整数运算测试
 │   ├── integration/
 │   │   ├── __init__.py                # 集成测试包入口
 │   │   └── test_imports.py            # 各子包导入冒烟测试
@@ -160,6 +162,7 @@ CachePilot/
 |---|---|
 | `cachepilot/__init__.py` | 标记 `cachepilot` 为 Python 包，并说明它是 CachePilot 控制平面包。 |
 | `cachepilot/__main__.py` | 支持执行 `python -m cachepilot`，实际转交给空服务的 `main()` 函数。 |
+| `cachepilot/utils.py` | 定义无状态 `CommonUtils` 工具类，统一非空标识符、正/非负整数校验、向上整除和毫秒到纳秒换算；调用方可保留自己的异常类型。 |
 
 ### 5.2 缓存元数据：`cachepilot/cache/`
 
@@ -268,6 +271,7 @@ CachePilot/
 | `tests/unit/test_state_machine.py` | 验证主路径、非法转换、重复事件、事件冲突、任意非终态进入异常终态、终态不可逆和终态后禁止输出 token。 |
 | `tests/unit/test_scheduler.py` | 验证 FCFS 优先级与类内顺序、tenant FIFO 子队列、WFQ 权重和虚拟完成标签、最大饥饿提升及固定 trace 确定性重放。 |
 | `tests/unit/test_sim_executor.py` | 验证逻辑时钟推进、prefill/decode、KV block 增长、continuous batch 补位、慢客户端背压、取消、worker 故障和相同输入完全一致重放。 |
+| `tests/unit/test_utils.py` | 验证共享工具类返回已校验值、拒绝 bool、保留调用方异常类型，并正确执行向上整除和毫秒到纳秒换算。 |
 | `tests/integration/__init__.py` | 标记集成冒烟测试包。 |
 | `tests/integration/test_imports.py` | 验证 cache、config、executors、gateway、routing、runtime 和 telemetry 等包都可以成功导入。 |
 | `tests/contract/__init__.py` | 标记可执行契约测试包。 |

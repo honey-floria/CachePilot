@@ -20,10 +20,9 @@ from cachepilot.runtime.admission import (
     StrictAdmissionConfig,
     StrictAdmissionController,
     _AdmissionRequest,
-    _require_non_negative_int,
-    _require_positive_int,
 )
 from cachepilot.runtime.kv_planner import KVPlanner
+from cachepilot.utils import CommonUtils
 
 
 class GrowthStatus(str, Enum):
@@ -68,17 +67,20 @@ class AdaptiveAdmissionConfig:
 
         if not isinstance(self.strict, StrictAdmissionConfig):
             raise TypeError("strict must be a StrictAdmissionConfig")
-        _require_positive_int(
+        CommonUtils.require_positive_int(
             self.min_samples_per_bucket,
             "min_samples_per_bucket",
+            AdmissionError,
         )
-        _require_non_negative_int(
+        CommonUtils.require_non_negative_int(
             self.safety_margin_tokens,
             "safety_margin_tokens",
+            AdmissionError,
         )
-        _require_positive_int(
+        CommonUtils.require_positive_int(
             self.max_samples_per_bucket,
             "max_samples_per_bucket",
+            AdmissionError,
         )
         if self.max_samples_per_bucket < self.min_samples_per_bucket:
             raise AdmissionError(
@@ -87,7 +89,11 @@ class AdaptiveAdmissionConfig:
 
         previous = 0
         for boundary in self.prompt_bucket_boundaries:
-            _require_positive_int(boundary, "prompt_bucket_boundaries item")
+            CommonUtils.require_positive_int(
+                boundary,
+                "prompt_bucket_boundaries item",
+                AdmissionError,
+            )
             if boundary <= previous:
                 raise AdmissionError(
                     "prompt_bucket_boundaries must be strictly increasing"
@@ -166,10 +172,15 @@ class AdaptiveAdmissionController(StrictAdmissionController):
         ``complete`` 同时记录误差、样本并释放资源。
         """
 
-        if type(tenant_id) is not str or not tenant_id:
-            raise AdmissionError("tenant_id must be a non-empty string")
-        _require_non_negative_int(prompt_tokens, "prompt_tokens")
-        _require_non_negative_int(output_tokens, "output_tokens")
+        CommonUtils.require_identifier(
+            tenant_id, "tenant_id", AdmissionError
+        )
+        CommonUtils.require_non_negative_int(
+            prompt_tokens, "prompt_tokens", AdmissionError
+        )
+        CommonUtils.require_non_negative_int(
+            output_tokens, "output_tokens", AdmissionError
+        )
         with self._lock:
             self._record_history_locked(tenant_id, prompt_tokens, output_tokens)
 
@@ -195,11 +206,13 @@ class AdaptiveAdmissionController(StrictAdmissionController):
             全部通过后才修改资源账本，因此失败不会留下半更新状态。
         """
 
-        if type(request_id) is not str or not request_id:
-            raise AdmissionError("request_id must be a non-empty string")
-        _require_non_negative_int(
+        CommonUtils.require_identifier(
+            request_id, "request_id", AdmissionError
+        )
+        CommonUtils.require_non_negative_int(
             generated_output_tokens,
             "generated_output_tokens",
+            AdmissionError,
         )
         with self._lock:
             request = self._active.get(request_id)
@@ -292,9 +305,12 @@ class AdaptiveAdmissionController(StrictAdmissionController):
         被抹平。
         """
 
-        if type(request_id) is not str or not request_id:
-            raise AdmissionError("request_id must be a non-empty string")
-        _require_non_negative_int(actual_output_tokens, "actual_output_tokens")
+        CommonUtils.require_identifier(
+            request_id, "request_id", AdmissionError
+        )
+        CommonUtils.require_non_negative_int(
+            actual_output_tokens, "actual_output_tokens", AdmissionError
+        )
         with self._lock:
             request = self._active.get(request_id)
             if request is None:

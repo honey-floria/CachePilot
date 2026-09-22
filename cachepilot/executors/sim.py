@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Deque, Dict, Mapping, Optional, Tuple
 
+from cachepilot.utils import CommonUtils
+
 
 class SimExecutorError(ValueError):
     """模拟执行器配置或操作无效。"""
@@ -74,7 +76,9 @@ class LogicalClock:
     ) -> None:
         """创建停在 ``initial_ns`` 的逻辑时钟；构造过程不会读取墙上时间。"""
 
-        _require_non_negative_int(initial_ns, "initial_ns")
+        CommonUtils.require_non_negative_int(
+            initial_ns, "initial_ns", SimExecutorError
+        )
         self._now_ns = initial_ns
 
     def __call__(self) -> int:
@@ -88,7 +92,9 @@ class LogicalClock:
     ) -> int:
         """推进时钟并返回新时间。"""
 
-        _require_non_negative_int(delta_ns, "delta_ns")
+        CommonUtils.require_non_negative_int(
+            delta_ns, "delta_ns", SimExecutorError
+        )
         self._now_ns += delta_ns
         return self._now_ns
 
@@ -118,13 +124,20 @@ class SimExecutorConfig:
             "decode_tokens_per_tick",
             "output_buffer_tokens",
         ):
-            _require_positive_int(getattr(self, field_name), field_name)
-        _require_non_negative_int(
+            CommonUtils.require_positive_int(
+                getattr(self, field_name), field_name, SimExecutorError
+            )
+        CommonUtils.require_non_negative_int(
             self.client_drain_tokens_per_tick,
             "client_drain_tokens_per_tick",
+            SimExecutorError,
         )
-        _require_non_negative_int(self.seed, "seed")
-        _require_identifier(self.worker_id, "worker_id")
+        CommonUtils.require_non_negative_int(
+            self.seed, "seed", SimExecutorError
+        )
+        CommonUtils.require_identifier(
+            self.worker_id, "worker_id", SimExecutorError
+        )
 
 
 @dataclass(frozen=True)
@@ -141,16 +154,27 @@ class SimRequest:
     def __post_init__(self) -> None:
         """校验请求规模、seed、自动取消时间和可选客户端排空速率。"""
 
-        _require_identifier(self.request_id, "request_id")
-        _require_non_negative_int(self.prompt_tokens, "prompt_tokens")
-        _require_non_negative_int(self.output_tokens, "output_tokens")
-        _require_non_negative_int(self.seed, "seed")
+        CommonUtils.require_identifier(
+            self.request_id, "request_id", SimExecutorError
+        )
+        CommonUtils.require_non_negative_int(
+            self.prompt_tokens, "prompt_tokens", SimExecutorError
+        )
+        CommonUtils.require_non_negative_int(
+            self.output_tokens, "output_tokens", SimExecutorError
+        )
+        CommonUtils.require_non_negative_int(
+            self.seed, "seed", SimExecutorError
+        )
         if self.cancel_after_ns is not None:
-            _require_non_negative_int(self.cancel_after_ns, "cancel_after_ns")
+            CommonUtils.require_non_negative_int(
+                self.cancel_after_ns, "cancel_after_ns", SimExecutorError
+            )
         if self.client_drain_tokens_per_tick is not None:
-            _require_non_negative_int(
+            CommonUtils.require_non_negative_int(
                 self.client_drain_tokens_per_tick,
                 "client_drain_tokens_per_tick",
+                SimExecutorError,
             )
 
 
@@ -375,7 +399,9 @@ class SimExecutor:
         情况；达到上限仍有工作时抛出 ``SimulationLimitError``。
         """
 
-        _require_positive_int(max_ticks, "max_ticks")
+        CommonUtils.require_positive_int(
+            max_ticks, "max_ticks", SimExecutorError
+        )
         executed = 0
         while self.has_work and executed < max_ticks:
             self.step()
@@ -397,7 +423,9 @@ class SimExecutor:
         重复取消返回 ``False``。
         """
 
-        _require_identifier(request_id, "request_id")
+        CommonUtils.require_identifier(
+            request_id, "request_id", SimExecutorError
+        )
         record = self._records.get(request_id)
         if record is None:
             raise SimExecutorError("request is not known: {0}".format(request_id))
@@ -418,8 +446,12 @@ class SimExecutor:
         ``FINISHED``。该入口用于模拟暂停读取的客户端恢复消费。
         """
 
-        _require_identifier(request_id, "request_id")
-        _require_non_negative_int(token_count, "token_count")
+        CommonUtils.require_identifier(
+            request_id, "request_id", SimExecutorError
+        )
+        CommonUtils.require_non_negative_int(
+            token_count, "token_count", SimExecutorError
+        )
         record = self._records.get(request_id)
         if record is None:
             raise SimExecutorError("request is not known: {0}".format(request_id))
@@ -438,7 +470,7 @@ class SimExecutor:
         返回 ``True``，重复注入返回 ``False``。
         """
 
-        _require_identifier(reason, "reason")
+        CommonUtils.require_identifier(reason, "reason", SimExecutorError)
         if not self._healthy:
             return False
         self._healthy = False
@@ -460,7 +492,9 @@ class SimExecutor:
     ) -> SimRequestSnapshot:
         """查看某个请求当前状态。"""
 
-        _require_identifier(request_id, "request_id")
+        CommonUtils.require_identifier(
+            request_id, "request_id", SimExecutorError
+        )
         record = self._records.get(request_id)
         if record is None:
             raise SimExecutorError("request is not known: {0}".format(request_id))
@@ -744,7 +778,9 @@ class SimExecutor:
         ``KV_GROWN`` 事件并刷新执行器总 KV 峰值。
         """
 
-        required_blocks = _ceil_div(kv_tokens, self._config.block_size)
+        required_blocks = CommonUtils.ceil_div(
+            kv_tokens, self._config.block_size
+        )
         if required_blocks <= record.logical_blocks:
             return
         previous_blocks = record.logical_blocks
@@ -839,8 +875,16 @@ class SimExecutor:
         if not isinstance(budgets, Mapping):
             raise SimExecutorError("request_token_budgets must be a mapping")
         for request_id, token_budget in budgets.items():
-            _require_identifier(request_id, "request_token_budgets key")
-            _require_non_negative_int(token_budget, "request token budget")
+            CommonUtils.require_identifier(
+                request_id,
+                "request_token_budgets key",
+                SimExecutorError,
+            )
+            CommonUtils.require_non_negative_int(
+                token_budget,
+                "request token budget",
+                SimExecutorError,
+            )
             if request_id not in self._records:
                 raise SimExecutorError(
                     "token budget references unknown request: {0}".format(
@@ -895,51 +939,4 @@ class SimExecutor:
             peak_logical_blocks=record.peak_logical_blocks,
             submitted_at_ns=record.submitted_at_ns,
             terminal_at_ns=record.terminal_at_ns,
-        )
-
-
-def _ceil_div(
-    dividend: int,  # 被除数。
-    divisor: int,  # 正整数除数。
-) -> int:
-    """对非负整数执行向上整除；零 token 对应零个逻辑 block。"""
-
-    if dividend == 0:
-        return 0
-    return (dividend + divisor - 1) // divisor
-
-
-def _require_identifier(
-    value: str,  # 要校验的标识符值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    """要求标识符是非空字符串，否则抛出稳定配置异常。"""
-
-    if type(value) is not str or not value:
-        raise SimExecutorError(
-            "{0} must be a non-empty string".format(field_name)
-        )
-
-
-def _require_positive_int(
-    value: int,  # 要校验的正整数值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    """要求值是正整数并显式拒绝布尔值。"""
-
-    if type(value) is not int or value < 1:
-        raise SimExecutorError(
-            "{0} must be a positive integer".format(field_name)
-        )
-
-
-def _require_non_negative_int(
-    value: int,  # 要校验的非负整数值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    """要求值是非负整数并显式拒绝布尔值。"""
-
-    if type(value) is not int or value < 0:
-        raise SimExecutorError(
-            "{0} must be a non-negative integer".format(field_name)
         )

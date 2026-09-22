@@ -18,6 +18,7 @@ from cachepilot.runtime.kv_planner import (
     KVRequestPlan,
 )
 from cachepilot.runtime.resources import ResourceLeaseManager
+from cachepilot.utils import CommonUtils
 
 
 class AdmissionError(ValueError):
@@ -66,9 +67,15 @@ class TenantAdmissionLimits:
     def __post_init__(self) -> None:
         """拒绝负数、零并发和零 token 等无意义配置。"""
 
-        _require_positive_int(self.max_active_sequences, "max_active_sequences")
-        _require_positive_int(self.max_active_tokens, "max_active_tokens")
-        _require_non_negative_int(self.max_queued_requests, "max_queued_requests")
+        CommonUtils.require_positive_int(
+            self.max_active_sequences, "max_active_sequences", AdmissionError
+        )
+        CommonUtils.require_positive_int(
+            self.max_active_tokens, "max_active_tokens", AdmissionError
+        )
+        CommonUtils.require_non_negative_int(
+            self.max_queued_requests, "max_queued_requests", AdmissionError
+        )
 
 
 @dataclass(frozen=True)
@@ -95,11 +102,21 @@ class StrictAdmissionConfig:
     def __post_init__(self) -> None:
         """校验全局限制，并复制 tenant 映射避免引用调用方容器。"""
 
-        _require_positive_int(self.total_blocks, "total_blocks")
-        _require_non_negative_int(self.safety_blocks, "safety_blocks")
-        _require_positive_int(self.max_active_sequences, "max_active_sequences")
-        _require_non_negative_int(self.max_queued_requests, "max_queued_requests")
-        _require_positive_int(self.retry_after_ms, "retry_after_ms")
+        CommonUtils.require_positive_int(
+            self.total_blocks, "total_blocks", AdmissionError
+        )
+        CommonUtils.require_non_negative_int(
+            self.safety_blocks, "safety_blocks", AdmissionError
+        )
+        CommonUtils.require_positive_int(
+            self.max_active_sequences, "max_active_sequences", AdmissionError
+        )
+        CommonUtils.require_non_negative_int(
+            self.max_queued_requests, "max_queued_requests", AdmissionError
+        )
+        CommonUtils.require_positive_int(
+            self.retry_after_ms, "retry_after_ms", AdmissionError
+        )
         if self.safety_blocks >= self.total_blocks:
             raise AdmissionError("safety_blocks must be less than total_blocks")
         if not isinstance(self.tenant_limits, Mapping):
@@ -107,7 +124,9 @@ class StrictAdmissionConfig:
 
         copied_limits = {}
         for tenant_id, limits in self.tenant_limits.items():
-            _require_identifier(tenant_id, "tenant_id")
+            CommonUtils.require_identifier(
+                tenant_id, "tenant_id", AdmissionError
+            )
             if not isinstance(limits, TenantAdmissionLimits):
                 raise AdmissionError(
                     "tenant limit for {0} must be TenantAdmissionLimits".format(
@@ -231,10 +250,18 @@ class StrictAdmissionController:
             在全局与 tenant 队列都有空间时进入队列。
         """
 
-        _require_identifier(request_id, "request_id")
-        _require_identifier(tenant_id, "tenant_id")
-        _require_non_negative_int(prompt_tokens, "prompt_tokens")
-        _require_positive_int(max_new_tokens, "max_new_tokens")
+        CommonUtils.require_identifier(
+            request_id, "request_id", AdmissionError
+        )
+        CommonUtils.require_identifier(
+            tenant_id, "tenant_id", AdmissionError
+        )
+        CommonUtils.require_non_negative_int(
+            prompt_tokens, "prompt_tokens", AdmissionError
+        )
+        CommonUtils.require_positive_int(
+            max_new_tokens, "max_new_tokens", AdmissionError
+        )
 
         with self._lock:
             self._ensure_new_request_id(request_id)
@@ -291,7 +318,9 @@ class StrictAdmissionController:
             ADMITTED。
         """
 
-        _require_identifier(request_id, "request_id")
+        CommonUtils.require_identifier(
+            request_id, "request_id", AdmissionError
+        )
         with self._lock:
             request = self._queued.get(request_id)
             if request is None:
@@ -321,7 +350,9 @@ class StrictAdmissionController:
             ``False``，不会重复扣减任何计数。
         """
 
-        _require_identifier(request_id, "request_id")
+        CommonUtils.require_identifier(
+            request_id, "request_id", AdmissionError
+        )
         with self._lock:
             return self._release_locked(request_id)
 
@@ -532,35 +563,3 @@ class StrictAdmissionController:
         values[key] -= 1
         if values[key] == 0:
             del values[key]
-
-
-def _require_identifier(
-    value: str,  # 要校验的标识符值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    """验证 request/tenant 等标识为非空字符串。"""
-
-    if type(value) is not str or not value:
-        raise AdmissionError("{0} must be a non-empty string".format(field_name))
-
-
-def _require_positive_int(
-    value: int,  # 要校验的整数值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    """验证配置值为正整数，并显式拒绝 bool。"""
-
-    if type(value) is not int or value < 1:
-        raise AdmissionError("{0} must be a positive integer".format(field_name))
-
-
-def _require_non_negative_int(
-    value: int,  # 要校验的整数值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    """验证 token 或队列上限为非负整数，并显式拒绝 bool。"""
-
-    if type(value) is not int or value < 0:
-        raise AdmissionError(
-            "{0} must be a non-negative integer".format(field_name)
-        )

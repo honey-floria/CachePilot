@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional, Tuple
 
+from cachepilot.utils import CommonUtils
+
 
 class RequestState(str, Enum):
     """请求从接收到结束的稳定状态集合。"""
@@ -108,8 +110,8 @@ class RequestStateMachine:
         request_id: str,  # 状态机所属的非空请求 ID。
         received_event_id: str,  # 创建 RECEIVED 状态的唯一事件 ID。
     ) -> None:
-        self._validate_identifier(request_id, "request_id")
-        self._validate_identifier(received_event_id, "received_event_id")
+        CommonUtils.require_identifier(request_id, "request_id")
+        CommonUtils.require_identifier(received_event_id, "received_event_id")
         self._request_id = request_id
         self._state = RequestState.RECEIVED
         self._transitions = [
@@ -192,7 +194,7 @@ class RequestStateMachine:
 
         if not isinstance(target, RequestState):
             raise TypeError("target must be a RequestState")
-        self._validate_identifier(event_id, "event_id")
+        CommonUtils.require_identifier(event_id, "event_id")
 
         with self._lock:
             # 所有事件共用 ID 命名空间，避免状态与 token 事件冲突。
@@ -253,7 +255,7 @@ class RequestStateMachine:
             EventConflictError: event ID 已用于其他事件。
         """
 
-        self._validate_identifier(event_id, "event_id")
+        CommonUtils.require_identifier(event_id, "event_id")
         with self._lock:
             existing = self._events.get(event_id)
             if existing is not None:
@@ -287,13 +289,3 @@ class RequestStateMachine:
         if target in TERMINAL_STATES:
             return True
         return _MAIN_PATH.get(current) is target
-
-    @staticmethod
-    def _validate_identifier(
-        value: str,  # 要校验的请求或事件标识符。
-        field: str,  # 错误消息中使用的字段名称。
-    ) -> None:
-        """验证请求 ID 和事件 ID 均为非空字符串。"""
-
-        if type(value) is not str or not value:
-            raise ValueError("{0} must be a non-empty string".format(field))

@@ -15,6 +15,8 @@ import threading
 from dataclasses import dataclass
 from typing import Dict, Hashable, Optional, Tuple
 
+from cachepilot.utils import CommonUtils
+
 
 class ResourceLeaseError(ValueError):
     """资源租约操作无效时抛出的基类。"""
@@ -82,10 +84,10 @@ class ResourceLeaseManager:
         self,
         capacity_blocks: Optional[int] = None,  # 可选的逻辑 KV block 总容量。
     ) -> None:
-        if capacity_blocks is not None and (
-            type(capacity_blocks) is not int or capacity_blocks < 1
-        ):
-            raise ValueError("capacity_blocks must be a positive integer or None")
+        if capacity_blocks is not None:
+            CommonUtils.require_positive_int(
+                capacity_blocks, "capacity_blocks"
+            )
         self._capacity_blocks = capacity_blocks
         self._leases: Dict[str, _ResourceLease] = {}
         self._total_logical_blocks = 0
@@ -124,8 +126,8 @@ class ResourceLeaseManager:
             ValueError: 请求 ID 或 block 数格式无效。
         """
 
-        self._validate_request_id(request_id)
-        self._validate_blocks(logical_blocks)
+        CommonUtils.require_identifier(request_id, "request_id")
+        CommonUtils.require_positive_int(logical_blocks, "logical blocks")
         with self._lock:
             if request_id in self._leases:
                 raise ResourceLeaseError(
@@ -163,8 +165,8 @@ class ResourceLeaseManager:
             CapacityExceededError: 增长会突破逻辑容量上限。
         """
 
-        self._validate_request_id(request_id)
-        self._validate_blocks(additional_blocks)
+        CommonUtils.require_identifier(request_id, "request_id")
+        CommonUtils.require_positive_int(additional_blocks, "logical blocks")
         with self._lock:
             lease = self._get_active_lease(request_id)
             self._ensure_capacity(additional_blocks)
@@ -196,7 +198,7 @@ class ResourceLeaseManager:
             LeaseReleasedError: 请求租约已经释放。
         """
 
-        self._validate_request_id(request_id)
+        CommonUtils.require_identifier(request_id, "request_id")
         try:
             hash(handle)
         except TypeError as exc:
@@ -224,7 +226,7 @@ class ResourceLeaseManager:
             调用方必须先执行 abort/free，再清理本账本。
         """
 
-        self._validate_request_id(request_id)
+        CommonUtils.require_identifier(request_id, "request_id")
         with self._lock:
             lease = self._leases.get(request_id)
             if lease is None:
@@ -245,7 +247,7 @@ class ResourceLeaseManager:
     ) -> ResourceLeaseSnapshot:
         """读取指定请求的不可变租约快照，不改变资源所有权。"""
 
-        self._validate_request_id(request_id)
+        CommonUtils.require_identifier(request_id, "request_id")
         with self._lock:
             return self._snapshot(self._leases.get(request_id))
 
@@ -299,17 +301,3 @@ class ResourceLeaseManager:
             physical_handles=tuple(lease.physical_handles),
             released=lease.released,
         )
-
-    @staticmethod
-    def _validate_request_id(
-        request_id: str,  # 要校验的请求 ID。
-    ) -> None:
-        if type(request_id) is not str or not request_id:
-            raise ValueError("request_id must be a non-empty string")
-
-    @staticmethod
-    def _validate_blocks(
-        blocks: int,  # 要校验的逻辑 block 数。
-    ) -> None:
-        if type(blocks) is not int or blocks < 1:
-            raise ValueError("logical blocks must be a positive integer")

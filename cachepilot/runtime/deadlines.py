@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
+from cachepilot.utils import CommonUtils
+
 
 class DeadlineError(ValueError):
     """Deadline 配置或生命周期操作无效时抛出。"""
@@ -43,8 +45,14 @@ class DeadlinePolicy:
     def __post_init__(self) -> None:
         """两个阶段 timeout 都必须是正整数毫秒。"""
 
-        _require_positive_int(self.queue_timeout_ms, "queue_timeout_ms")
-        _require_positive_int(self.execution_timeout_ms, "execution_timeout_ms")
+        CommonUtils.require_positive_int(
+            self.queue_timeout_ms, "queue_timeout_ms", DeadlineError
+        )
+        CommonUtils.require_positive_int(
+            self.execution_timeout_ms,
+            "execution_timeout_ms",
+            DeadlineError,
+        )
 
 
 @dataclass(frozen=True)
@@ -131,8 +139,12 @@ class RequestDeadlineManager:
         取两者中更早者，因此服务端阶段预算不会延长客户端总预算。
         """
 
-        _require_identifier(request_id)
-        _require_positive_int(request_deadline_ms, "request_deadline_ms")
+        CommonUtils.require_identifier(
+            request_id, "request_id", DeadlineError
+        )
+        CommonUtils.require_positive_int(
+            request_deadline_ms, "request_deadline_ms", DeadlineError
+        )
         now_ns = self._monotonic_ns()
         with self._lock:
             if request_id in self._tracked or request_id in self._completed:
@@ -142,9 +154,11 @@ class RequestDeadlineManager:
             self._tracked[request_id] = _TrackedDeadline(
                 request_id=request_id,
                 phase=DeadlinePhase.QUEUED,
-                request_deadline_ns=now_ns + _milliseconds_to_ns(request_deadline_ms),
+                request_deadline_ns=(
+                    now_ns + CommonUtils.milliseconds_to_ns(request_deadline_ms)
+                ),
                 phase_deadline_ns=now_ns
-                + _milliseconds_to_ns(self._policy.queue_timeout_ms),
+                + CommonUtils.milliseconds_to_ns(self._policy.queue_timeout_ms),
             )
 
     def mark_executing(
@@ -161,7 +175,9 @@ class RequestDeadlineManager:
             请求，而是立即回收并返回 ``TimeoutEvent``。
         """
 
-        _require_identifier(request_id)
+        CommonUtils.require_identifier(
+            request_id, "request_id", DeadlineError
+        )
         now_ns = self._monotonic_ns()
         with self._lock:
             tracked = self._tracked.get(request_id)
@@ -173,7 +189,7 @@ class RequestDeadlineManager:
             if tracked.phase is DeadlinePhase.EXECUTING:
                 return None
             tracked.phase = DeadlinePhase.EXECUTING
-            tracked.phase_deadline_ns = now_ns + _milliseconds_to_ns(
+            tracked.phase_deadline_ns = now_ns + CommonUtils.milliseconds_to_ns(
                 self._policy.execution_timeout_ms
             )
             return None
@@ -188,7 +204,9 @@ class RequestDeadlineManager:
             找到并移除跟踪记录时为 ``True``，重复调用为 ``False``。
         """
 
-        _require_identifier(request_id)
+        CommonUtils.require_identifier(
+            request_id, "request_id", DeadlineError
+        )
         with self._lock:
             tracked = self._tracked.pop(request_id, None)
             if tracked is None:
@@ -279,33 +297,4 @@ class RequestDeadlineManager:
             reason=reason,
             expired_at_ns=now_ns,
             resources_released=resources_released,
-        )
-
-
-def _milliseconds_to_ns(
-    value: int,  # 要转换为纳秒的整数毫秒值。
-) -> int:
-    """使用整数运算把毫秒转换为纳秒，避免浮点误差。"""
-
-    return value * 1_000_000
-
-
-def _require_identifier(
-    request_id: str,  # 要校验的请求 ID。
-) -> None:
-    """验证 request ID 为非空字符串。"""
-
-    if type(request_id) is not str or not request_id:
-        raise DeadlineError("request_id must be a non-empty string")
-
-
-def _require_positive_int(
-    value: int,  # 要校验的整数值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    """验证 timeout 等配置为正整数，并拒绝 bool。"""
-
-    if type(value) is not int or value < 1:
-        raise DeadlineError(
-            "{0} must be a positive integer".format(field_name)
         )

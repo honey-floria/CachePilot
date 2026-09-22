@@ -15,6 +15,8 @@ from enum import Enum
 from fractions import Fraction
 from typing import Callable, Deque, Dict, Mapping, Optional, Tuple
 
+from cachepilot.utils import CommonUtils
+
 
 class SchedulerError(ValueError):
     """调度配置或队列操作无效。"""
@@ -47,8 +49,12 @@ class SchedulingRequest:
     service_cost: int = 1  # 预计工作量；WFQ 用它计算虚拟完成标签。
 
     def __post_init__(self) -> None:
-        _require_identifier(self.request_id, "request_id")
-        _require_identifier(self.tenant_id, "tenant_id")
+        CommonUtils.require_identifier(
+            self.request_id, "request_id", SchedulerError
+        )
+        CommonUtils.require_identifier(
+            self.tenant_id, "tenant_id", SchedulerError
+        )
         if isinstance(self.priority, str):
             try:
                 normalized_priority = SchedulingPriority(self.priority)
@@ -59,7 +65,9 @@ class SchedulingRequest:
             object.__setattr__(self, "priority", normalized_priority)
         elif not isinstance(self.priority, SchedulingPriority):
             raise SchedulerError("priority must be interactive or batch")
-        _require_positive_int(self.service_cost, "service_cost")
+        CommonUtils.require_positive_int(
+            self.service_cost, "service_cost", SchedulerError
+        )
 
 
 @dataclass(frozen=True)
@@ -181,8 +189,11 @@ class _TenantQueueScheduler:
 
     def _read_clock(self) -> int:
         now_ns = self._monotonic_ns()
-        if type(now_ns) is not int or now_ns < 0:
-            raise SchedulerError("monotonic_ns must return a non-negative integer")
+        CommonUtils.require_non_negative_int(
+            now_ns,
+            "monotonic_ns return value",
+            SchedulerError,
+        )
         with self._lock:
             if self._last_now_ns is not None and now_ns < self._last_now_ns:
                 raise SchedulerError("monotonic clock moved backwards")
@@ -276,11 +287,19 @@ class WFQScheduler(_TenantQueueScheduler):
             raise SchedulerError("tenant_weights must be a mapping")
         copied_weights = {}
         for tenant_id, weight in tenant_weights.items():
-            _require_identifier(tenant_id, "tenant_id")
-            _require_positive_int(weight, "tenant weight")
+            CommonUtils.require_identifier(
+                tenant_id, "tenant_id", SchedulerError
+            )
+            CommonUtils.require_positive_int(
+                weight, "tenant weight", SchedulerError
+            )
             copied_weights[tenant_id] = weight
-        _require_positive_int(default_weight, "default_weight")
-        _require_positive_int(max_starvation_ns, "max_starvation_ns")
+        CommonUtils.require_positive_int(
+            default_weight, "default_weight", SchedulerError
+        )
+        CommonUtils.require_positive_int(
+            max_starvation_ns, "max_starvation_ns", SchedulerError
+        )
         self._tenant_weights = copied_weights
         self._default_weight = default_weight
         self._max_starvation_ns = max_starvation_ns
@@ -355,24 +374,4 @@ class WFQScheduler(_TenantQueueScheduler):
         return tuple(
             (priority.value, self._virtual_time[priority])
             for priority in _PRIORITY_ORDER
-        )
-
-
-def _require_identifier(
-    value: str,  # 要校验的标识符值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    if type(value) is not str or not value:
-        raise SchedulerError(
-            "{0} must be a non-empty string".format(field_name)
-        )
-
-
-def _require_positive_int(
-    value: int,  # 要校验的整数值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    if type(value) is not int or value < 1:
-        raise SchedulerError(
-            "{0} must be a positive integer".format(field_name)
         )

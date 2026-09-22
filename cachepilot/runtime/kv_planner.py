@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from cachepilot.config.baseline import ModelBaseline
+from cachepilot.utils import CommonUtils
 
 
 class KVPlannerError(ValueError):
@@ -69,10 +70,9 @@ class KVModelSpec:
             "context_limit",
         ):
             value = getattr(self, field_name)
-            if type(value) is not int or value < 1:
-                raise KVPlannerError(
-                    "{0} must be a positive integer".format(field_name)
-                )
+            CommonUtils.require_positive_int(
+                value, field_name, KVPlannerError
+            )
 
         if type(self.dtype) is not str or not self.dtype.strip():
             raise KVPlannerError("dtype must be a non-empty string")
@@ -111,11 +111,11 @@ class KVModelSpec:
             if context_limit is None
             else context_limit
         )
-        if (
-            type(selected_context_limit) is not int
-            or selected_context_limit < 1
-        ):
-            raise KVPlannerError("context_limit must be a positive integer")
+        CommonUtils.require_positive_int(
+            selected_context_limit,
+            "context_limit",
+            KVPlannerError,
+        )
         if selected_context_limit > baseline.model_max_context_tokens:
             raise KVPlannerError(
                 "context_limit cannot exceed the model maximum context"
@@ -210,7 +210,9 @@ class KVPlanner:
     def context_blocks(self) -> int:
         """返回覆盖服务上下文上限所需的完整 block 数。"""
 
-        return _ceil_div(self._spec.context_limit, self._spec.block_size)
+        return CommonUtils.ceil_div(
+            self._spec.context_limit, self._spec.block_size
+        )
 
     @property
     def theoretical_context_bytes(self) -> int:
@@ -238,10 +240,13 @@ class KVPlanner:
             KVPlannerError: token 数为负，或总 KV token 数为 0。
         """
 
-        _validate_non_negative_int(prompt_tokens, "prompt_tokens")
-        _validate_non_negative_int(
+        CommonUtils.require_non_negative_int(
+            prompt_tokens, "prompt_tokens", KVPlannerError
+        )
+        CommonUtils.require_non_negative_int(
             expected_output_tokens,
             "expected_output_tokens",
+            KVPlannerError,
         )
         total_tokens = prompt_tokens + expected_output_tokens
         if total_tokens < 1:
@@ -255,7 +260,9 @@ class KVPlanner:
             )
 
         # 物理 allocator 以完整 block 分配，尾部不足一块也占一块。
-        logical_blocks = _ceil_div(total_tokens, self._spec.block_size)
+        logical_blocks = CommonUtils.ceil_div(
+            total_tokens, self._spec.block_size
+        )
         allocated_tokens = logical_blocks * self._spec.block_size
         return KVRequestPlan(
             prompt_tokens=prompt_tokens,
@@ -290,8 +297,11 @@ class KVPlanner:
                 "usable_kv_bytes is required; total GPU memory is not enough "
                 "to infer real usable KV capacity"
             )
-        if type(usable_kv_bytes) is not int or usable_kv_bytes < 1:
-            raise KVPlannerError("usable_kv_bytes must be a positive integer")
+        CommonUtils.require_positive_int(
+            usable_kv_bytes,
+            "usable_kv_bytes",
+            KVPlannerError,
+        )
 
         # 向下取整，不把放不下完整 block 的尾部空间计入容量。
         logical_blocks = usable_kv_bytes // self.bytes_per_block
@@ -320,24 +330,3 @@ def _normalize_dtype(
             )
         )
     return normalized
-
-
-def _validate_non_negative_int(
-    value: int,  # 要校验的非负整数值。
-    field_name: str,  # 错误消息中使用的字段名称。
-) -> None:
-    """验证 token 计数等字段是非负整数，并拒绝 bool。"""
-
-    if type(value) is not int or value < 0:
-        raise KVPlannerError(
-            "{0} must be a non-negative integer".format(field_name)
-        )
-
-
-def _ceil_div(
-    dividend: int,  # 被除数。
-    divisor: int,  # 正整数除数。
-) -> int:
-    """执行仅适用于非负整数的无浮点向上整除。"""
-
-    return (dividend + divisor - 1) // divisor
