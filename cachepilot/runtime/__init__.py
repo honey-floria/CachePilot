@@ -1,7 +1,7 @@
 """CachePilot 请求生命周期与服务运行时公共接口。
 
 调用方优先从本模块导入稳定类型；以下子模块分别负责准入、deadline、
-KV 规划、Registry、资源账本和状态机。执行器与调度循环尚未在本阶段导出。
+KV 规划、Registry、资源账本、状态机和公平调度。执行器与调度循环尚未导出。
 """
 
 from .admission import (
@@ -41,6 +41,15 @@ from .kv_planner import (
 )
 from .registry import RequestRegistry, RequestSnapshot
 from .resources import ResourceLeaseManager, ResourceLeaseSnapshot
+from .scheduler import (
+    FCFSScheduler,
+    ScheduleDecision,
+    SchedulerError,
+    SchedulerSnapshot,
+    SchedulingPriority,
+    SchedulingRequest,
+    WFQScheduler,
+)
 from .state_machine import RequestState, RequestStateMachine
 
 __all__ = [
@@ -77,6 +86,13 @@ __all__ = [
     # 资源所有权、请求状态机和骨架探活服务。
     "ResourceLeaseManager",
     "ResourceLeaseSnapshot",
+    "FCFSScheduler",
+    "ScheduleDecision",
+    "SchedulerError",
+    "SchedulerSnapshot",
+    "SchedulingPriority",
+    "SchedulingRequest",
+    "WFQScheduler",
     "RequestState",
     "RequestStateMachine",
     "create_server",

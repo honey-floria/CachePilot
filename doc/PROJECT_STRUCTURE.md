@@ -66,6 +66,7 @@ CachePilot/
 │   │   ├── registry.py                # 请求查询、去重、状态和事件日志 Registry
 │   │   ├── resources.py               # 逻辑 KV 租约和物理 handle 资源账本
 │   │   ├── kv_planner.py              # KV block 与理论字节容量规划
+│   │   ├── scheduler.py               # FCFS/WFQ 优先级与 tenant 公平调度
 │   │   └── state_machine.py           # 请求生命周期状态机和 token 输出门禁
 │   └── telemetry/
 │       └── __init__.py                # 指标、trace 和成本账本包占位
@@ -93,6 +94,7 @@ CachePilot/
 │   │   ├── test_empty_service.py      # 空服务端点测试
 │   │   ├── test_registry.py           # Registry 查询、幂等和并发终态测试
 │   │   ├── test_resources.py          # 资源申请、增长、释放和回收测试
+│   │   ├── test_scheduler.py          # FCFS/WFQ 顺序、公平与重放测试
 │   │   └── test_state_machine.py      # 生命周期状态转换与幂等测试
 │   ├── integration/
 │   │   ├── __init__.py                # 集成测试包入口
@@ -193,13 +195,14 @@ CachePilot/
 
 | 文件 | 功能 |
 |---|---|
-| `cachepilot/runtime/__init__.py` | 声明运行时包，导出请求状态机和 `create_server`；后续计划继续承载 Registry 和 Worker loop。 |
+| `cachepilot/runtime/__init__.py` | 声明运行时包，导出请求状态机、准入、deadline、资源账本、FCFS/WFQ 调度器和 `create_server`；后续计划继续承载 Worker loop。 |
 | `cachepilot/runtime/adaptive_admission.py` | 按 tenant 和 prompt 长度分桶统计历史输出 P95，加安全余量进行自适应 reservation；样本不足回退 Strict，并在生成增长时阻止突破 KV 或 tenant 硬上限。 |
 | `cachepilot/runtime/admission.py` | 实现线程安全的 Strict Admission：按 prompt 与最大输出长度预留 KV blocks，并原子限制全局活跃数、安全容量、tenant token/并发及全局/tenant 队列长度；返回稳定的接纳、排队或拒绝原因。 |
 | `cachepilot/runtime/deadlines.py` | 使用单调时钟跟踪请求总 deadline、排队 deadline 和执行 deadline；由 runtime loop 确定性扫描到期请求并调用资源回收回调。 |
 | `cachepilot/runtime/empty_service.py` | 使用 Python 标准库实现线程化空 HTTP 服务，提供 `/healthz`、`/readyz`、`/metrics` 和统一 404 响应。它只用于环境验收，不执行模型推理，也不实现正式 OpenAI API。 |
 | `cachepilot/runtime/registry.py` | 实现线程安全的内存请求 Registry，按 request ID 和租户作用域幂等键注册、查询和去重，并通过不可变快照暴露当前状态、token 数与状态事件日志。 |
 | `cachepilot/runtime/resources.py` | 实现线程安全的资源租约账本：管理逻辑 KV block 的申请、增长、容量和一次性释放，并独立记录执行器物理 handle。 |
+| `cachepilot/runtime/scheduler.py` | 实现线程安全且可注入逻辑时钟的 FCFS/WFQ 调度：维护 interactive/batch 下的 tenant FIFO 子队列，以精确分数计算 WFQ 虚拟标签，并按最大队首等待时间提供饥饿保护。 |
 | `cachepilot/runtime/kv_planner.py` | 根据模型架构、KV dtype、block size 和服务上下文限制计算请求逻辑 blocks 与理论 KV 字节；只有显式给出 KV 专用字节预算时才换算容量，不从 GPU 总显存推导真实可用容量。 |
 | `cachepilot/runtime/state_machine.py` | 实现单请求生命周期状态机、原子状态迁移、事件 ID 幂等与冲突检测、不可逆终态，以及仅在 `EXECUTING` 状态开放的 token 输出登记门禁。 |
 
@@ -256,6 +259,7 @@ CachePilot/
 | `tests/unit/test_registry.py` | 验证请求注册与查询、request ID/幂等键去重、租户隔离、状态快照和取消/完成/失败并发竞争只产生一个终态。 |
 | `tests/unit/test_resources.py` | 验证 reservation 申请、增长、容量限制、物理 handle 隔离、一次性释放和所有终态路径回收到基线。 |
 | `tests/unit/test_state_machine.py` | 验证主路径、非法转换、重复事件、事件冲突、任意非终态进入异常终态、终态不可逆和终态后禁止输出 token。 |
+| `tests/unit/test_scheduler.py` | 验证 FCFS 优先级与类内顺序、tenant FIFO 子队列、WFQ 权重和虚拟完成标签、最大饥饿提升及固定 trace 确定性重放。 |
 | `tests/integration/__init__.py` | 标记集成冒烟测试包。 |
 | `tests/integration/test_imports.py` | 验证 cache、config、executors、gateway、routing、runtime 和 telemetry 等包都可以成功导入。 |
 | `tests/contract/__init__.py` | 标记可执行契约测试包。 |
@@ -278,6 +282,7 @@ CachePilot/
 | `doc/adr/0003-model-and-dependency-baseline.md` | 记录初始模型选择、上下文限制、Python/PyTorch/vLLM 兼容矩阵、CUDA 边界、锁定和升级规则。 |
 | `doc/adr/0004-python-3.13-baseline.md` | 记录采用 Python `3.13.15` 作为统一实验基线的原因、验收要求和影响。 |
 | `doc/adr/0005-experiment-protocol.md` | 决定可复现实验的运行单位、trace schema、时钟、seed、manifest、逐请求记录、汇总和验收规则。 |
+| `doc/adr/0006-fcfs-and-wfq-scheduling.md` | 决定 FCFS/WFQ 的优先级、tenant 子队列、虚拟时间、权重、稳定打破平局和最大饥饿时间语义。 |
 
 ## 13. 部署与 Notebook
 
