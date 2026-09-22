@@ -28,7 +28,7 @@
 ### 1.3 调度与模拟执行器
 
 - [x] **FCFS 与 WFQ**：按 interactive/batch 和 tenant 子队列实现基线调度，明确 WFQ 虚拟时间、权重和最大饥饿时间。验收：固定 trace 下顺序可重放，低权重 tenant 不永久饥饿。实现见 `cachepilot/runtime/scheduler.py`，语义见 [ADR-0006](adr/0006-fcfs-and-wfq-scheduling.md)，验证见 `tests/unit/test_scheduler.py`。
-- [ ] **SimExecutor**：使用可控逻辑时钟模拟 prefill/decode、KV 增长、continuous batching、慢客户端、取消和 worker 故障。验收：相同配置、trace 和 seed 产生一致事件与统计。
+- [x] **SimExecutor**：使用可控逻辑时钟模拟 prefill/decode、KV 增长、continuous batching、慢客户端、取消和 worker 故障。验收：相同配置、trace 和 seed 产生一致事件与统计。实现见 `cachepilot/executors/sim.py`，语义见 [ADR-0007](adr/0007-sim-executor.md)，验证见 `tests/unit/test_sim_executor.py`。
 - [ ] **调度循环**：每轮先完成与回收，再更新 KV 账本，并按 active sequences、batch tokens 和 KV blocks 三重预算推进请求。验收：混合长短请求不能突破硬上限。
 - [ ] **Prefix Index**：按 tenant、模型/tokenizer/量化版本和 tokenized prefix 建立逻辑索引；cache boost 受公平边界约束。验收：跨 tenant/版本不互相命中，逻辑命中不计作物理命中。
 - [ ] **属性与竞争测试**：覆盖取消/完成竞争、deadline 边界、tenant 限额、重复事件、KV 释放和缓存失效。验收：保存至少一个可重复的故障回归 trace。

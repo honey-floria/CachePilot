@@ -21,7 +21,7 @@ PyTorch 等推理执行器之上。它不重新实现 CUDA kernel 或模型内�
 - 启动只提供健康检查、就绪检查和指标端点的空 HTTP 服务；
 - 通过 CPU/Colab 流程运行静态检查、测试和服务探活。
 
-完整的请求状态机、KV Planner、调度器、真实模型执行器和多 GPU Worker 路由尚未实现，
+真实模型执行器、调度循环和多 GPU Worker 路由尚未实现，
 属于 `doc/TODO.md` 中规划的 Phase 0–2 工作。
 
 ## 2. 文件结构
@@ -50,7 +50,8 @@ CachePilot/
 │   │   ├── __init__.py                # 配置校验包入口
 │   │   └── baseline.py                # 模型和依赖版本基线校验
 │   ├── executors/
-│   │   └── __init__.py                # 执行器适配层占位
+│   │   ├── __init__.py                # 执行器公共接口
+│   │   └── sim.py                     # 逻辑时钟 continuous-batching 模拟器
 │   ├── gateway/
 │   │   ├── __init__.py                # 网关包入口
 │   │   ├── contracts.py               # 请求契约、规范化和幂等校验
@@ -95,6 +96,7 @@ CachePilot/
 │   │   ├── test_registry.py           # Registry 查询、幂等和并发终态测试
 │   │   ├── test_resources.py          # 资源申请、增长、释放和回收测试
 │   │   ├── test_scheduler.py          # FCFS/WFQ 顺序、公平与重放测试
+│   │   ├── test_sim_executor.py       # 模拟执行、背压、取消和故障测试
 │   │   └── test_state_machine.py      # 生命周期状态转换与幂等测试
 │   ├── integration/
 │   │   ├── __init__.py                # 集成测试包入口
@@ -175,7 +177,8 @@ CachePilot/
 
 | 文件 | 功能 |
 |---|---|
-| `cachepilot/executors/__init__.py` | 预留模型执行器适配层。当前尚未包含 `SimExecutor`、`TorchExecutor` 或 `VllmExecutor` 的实际推理实现。 |
+| `cachepilot/executors/__init__.py` | 导出 SimExecutor 的逻辑时钟、请求、事件、快照、统计和稳定异常；Torch/vLLM 适配器仍待 Phase 1 实现。 |
+| `cachepilot/executors/sim.py` | 实现固定 tick 的确定性模拟执行器，覆盖 prefill/decode、逻辑 KV 增长和释放、continuous batching、客户端背压、取消、worker 故障及事件/统计快照。 |
 
 ### 5.5 网关：`cachepilot/gateway/`
 
@@ -260,6 +263,7 @@ CachePilot/
 | `tests/unit/test_resources.py` | 验证 reservation 申请、增长、容量限制、物理 handle 隔离、一次性释放和所有终态路径回收到基线。 |
 | `tests/unit/test_state_machine.py` | 验证主路径、非法转换、重复事件、事件冲突、任意非终态进入异常终态、终态不可逆和终态后禁止输出 token。 |
 | `tests/unit/test_scheduler.py` | 验证 FCFS 优先级与类内顺序、tenant FIFO 子队列、WFQ 权重和虚拟完成标签、最大饥饿提升及固定 trace 确定性重放。 |
+| `tests/unit/test_sim_executor.py` | 验证逻辑时钟推进、prefill/decode、KV block 增长、continuous batch 补位、慢客户端背压、取消、worker 故障和相同输入完全一致重放。 |
 | `tests/integration/__init__.py` | 标记集成冒烟测试包。 |
 | `tests/integration/test_imports.py` | 验证 cache、config、executors、gateway、routing、runtime 和 telemetry 等包都可以成功导入。 |
 | `tests/contract/__init__.py` | 标记可执行契约测试包。 |
@@ -283,6 +287,7 @@ CachePilot/
 | `doc/adr/0004-python-3.13-baseline.md` | 记录采用 Python `3.13.15` 作为统一实验基线的原因、验收要求和影响。 |
 | `doc/adr/0005-experiment-protocol.md` | 决定可复现实验的运行单位、trace schema、时钟、seed、manifest、逐请求记录、汇总和验收规则。 |
 | `doc/adr/0006-fcfs-and-wfq-scheduling.md` | 决定 FCFS/WFQ 的优先级、tenant 子队列、虚拟时间、权重、稳定打破平局和最大饥饿时间语义。 |
+| `doc/adr/0007-sim-executor.md` | 决定 SimExecutor 的逻辑 tick 顺序、prefill/decode 成本、KV 生命周期、输出缓冲、取消/故障和确定性重放语义。 |
 
 ## 13. 部署与 Notebook
 
