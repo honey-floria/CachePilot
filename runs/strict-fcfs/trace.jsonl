@@ -1,0 +1,4 @@
+{"arrival_ms":0,"expected_output_tokens":8,"max_new_tokens":8,"priority":"interactive","prompt_tokens":8,"request_id":"mixed-length-0000","seed":695425564,"tenant_id":"tenant-0","trace_version":1}
+{"arrival_ms":5,"expected_output_tokens":16,"max_new_tokens":16,"priority":"interactive","prompt_tokens":32,"request_id":"mixed-length-0001","seed":323946139,"tenant_id":"tenant-1","trace_version":1}
+{"arrival_ms":10,"expected_output_tokens":32,"max_new_tokens":32,"priority":"interactive","prompt_tokens":96,"request_id":"mixed-length-0002","seed":847876999,"tenant_id":"tenant-2","trace_version":1}
+{"arrival_ms":15,"expected_output_tokens":4,"max_new_tokens":4,"priority":"batch","prompt_tokens":16,"request_id":"mixed-length-0003","seed":103694312,"tenant_id":"tenant-0","trace_version":1}

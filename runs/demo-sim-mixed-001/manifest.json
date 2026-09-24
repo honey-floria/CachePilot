@@ -1,0 +1,53 @@
+{
+  "artifact_type": "cachepilot_experiment_manifest",
+  "schema_version": 1,
+  "run_id": "demo-sim-mixed-001",
+  "trace_id": "mixed-length-seed-7",
+  "created_at_utc": "2026-09-24T00:00:00Z",
+  "clock": {
+    "event_clock": "monotonic_ns",
+    "duration_unit": "ms",
+    "arrival_origin": "trace_zero",
+    "wall_clock_role": "metadata_only"
+  },
+  "seed": 7,
+  "repetition_index": 0,
+  "warmup": false,
+  "hardware": {
+    "host": "local-cpu",
+    "platform": "macOS",
+    "cpu": "Apple Silicon",
+    "gpu": "none",
+    "gpu_count": 0,
+    "gpu_memory_bytes": 0,
+    "driver": "not_installed",
+    "cuda": "not_installed",
+    "topology": "not_applicable"
+  },
+  "software": {
+    "cachepilot": "0.1.0",
+    "python": "3.13.15",
+    "os": "macOS",
+    "executor": "SimExecutor",
+    "torch": "not_installed",
+    "transformers": "not_installed",
+    "vllm": "not_installed",
+    "git_commit": "0123456789012345678901234567890123456789"
+  },
+  "model": {
+    "id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tokenizer_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "dtype": "fp32",
+    "quantization": "none",
+    "context_limit": 8192
+  },
+  "strategy": {
+    "version": "1",
+    "executor": "SimExecutor",
+    "admission": "strict",
+    "scheduler": "fcfs",
+    "router": "single",
+    "prefix_mode": "blind"
+  }
+}

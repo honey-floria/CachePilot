@@ -1,0 +1,196 @@
+{
+  "admission_reasons": {
+    "admitted": 4
+  },
+  "artifact_type": "cachepilot_experiment_summary",
+  "cancellation_rate": 0.0,
+  "control_variables": {
+    "admission": "strict",
+    "executor": "SimExecutor",
+    "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+    "model_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "prefix_mode": "blind",
+    "router": "single",
+    "scheduler": "fcfs",
+    "seed": 7,
+    "tokenizer_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "trace_id": "mixed-length-seed-7"
+  },
+  "fairness_jain": 0.8426966292134831,
+  "measured_request_count": 4,
+  "metrics": {
+    "queue_ms": {
+      "count": 4,
+      "p50": 10.0,
+      "p95": 15.0,
+      "p99": 15.0
+    },
+    "total_ms": {
+      "count": 4,
+      "p50": 20.0,
+      "p95": 38.0,
+      "p99": 38.0
+    },
+    "tpot_ms": {
+      "count": 4,
+      "p50": 0.0,
+      "p95": 0.22580645161290322,
+      "p99": 0.22580645161290322
+    },
+    "ttft_ms": {
+      "count": 4,
+      "p50": 13.0,
+      "p95": 21.0,
+      "p99": 21.0
+    }
+  },
+  "quantile_method": "nearest_rank",
+  "rejection_rate": 0.0,
+  "repetition_index": 0,
+  "request_count": 4,
+  "request_timelines": [
+    {
+      "admission_reason": "admitted",
+      "arrival_ms": 0,
+      "request_id": "mixed-length-0000",
+      "reserved_blocks_peak": 2,
+      "tenant_id": "tenant-0",
+      "terminal_state": "FINISHED",
+      "timeline": [
+        {
+          "end_ms": 15.0,
+          "phase": "queue",
+          "start_ms": 0
+        },
+        {
+          "end_ms": 15.0,
+          "phase": "prefill",
+          "start_ms": 15.0
+        },
+        {
+          "end_ms": 15.0,
+          "phase": "decode",
+          "start_ms": 15.0
+        },
+        {
+          "end_ms": 20.0,
+          "phase": "request",
+          "start_ms": 0
+        }
+      ]
+    },
+    {
+      "admission_reason": "admitted",
+      "arrival_ms": 5,
+      "request_id": "mixed-length-0001",
+      "reserved_blocks_peak": 6,
+      "tenant_id": "tenant-1",
+      "terminal_state": "FINISHED",
+      "timeline": [
+        {
+          "end_ms": 15.0,
+          "phase": "queue",
+          "start_ms": 5
+        },
+        {
+          "end_ms": 18.0,
+          "phase": "prefill",
+          "start_ms": 15.0
+        },
+        {
+          "end_ms": 18.0,
+          "phase": "decode",
+          "start_ms": 18.0
+        },
+        {
+          "end_ms": 27.0,
+          "phase": "request",
+          "start_ms": 5
+        }
+      ]
+    },
+    {
+      "admission_reason": "admitted",
+      "arrival_ms": 10,
+      "request_id": "mixed-length-0002",
+      "reserved_blocks_peak": 16,
+      "tenant_id": "tenant-2",
+      "terminal_state": "FINISHED",
+      "timeline": [
+        {
+          "end_ms": 20.0,
+          "phase": "queue",
+          "start_ms": 10
+        },
+        {
+          "end_ms": 31.0,
+          "phase": "prefill",
+          "start_ms": 20.0
+        },
+        {
+          "end_ms": 38.0,
+          "phase": "decode",
+          "start_ms": 31.0
+        },
+        {
+          "end_ms": 48.0,
+          "phase": "request",
+          "start_ms": 10
+        }
+      ]
+    },
+    {
+      "admission_reason": "admitted",
+      "arrival_ms": 15,
+      "request_id": "mixed-length-0003",
+      "reserved_blocks_peak": 3,
+      "tenant_id": "tenant-0",
+      "terminal_state": "FINISHED",
+      "timeline": [
+        {
+          "end_ms": 27.0,
+          "phase": "queue",
+          "start_ms": 15
+        },
+        {
+          "end_ms": 28.0,
+          "phase": "prefill",
+          "start_ms": 27.0
+        },
+        {
+          "end_ms": 28.0,
+          "phase": "decode",
+          "start_ms": 28.0
+        },
+        {
+          "end_ms": 31.0,
+          "phase": "request",
+          "start_ms": 15
+        }
+      ]
+    }
+  ],
+  "resource_peaks": {
+    "estimated_gpu_seconds_peak": 0.0,
+    "reserved_blocks_peak": 16
+  },
+  "run_id": "demo-sim-mixed-strict-fcfs",
+  "schema_version": 1,
+  "seed": 7,
+  "simulation": {
+    "executor": "SimExecutor",
+    "is_simulated": true,
+    "label": "simulated"
+  },
+  "source": {
+    "manifest": "runs/strict-fcfs/manifest.json",
+    "requests": "runs/strict-fcfs/requests.jsonl",
+    "trace": "runs/strict-fcfs/trace.jsonl"
+  },
+  "terminal_counts": {
+    "FINISHED": 4
+  },
+  "throughput_completion_tokens_per_s": 1578.9473684210527,
+  "trace_id": "mixed-length-seed-7",
+  "warmup": false
+}
