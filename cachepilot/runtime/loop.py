@@ -78,6 +78,7 @@ class RuntimeRequest:
     priority: SchedulingPriority  # interactive 或 batch 调度类别。
     prompt_tokens: int  # prefill 阶段输入 token 数。
     output_tokens: int  # 模拟 decode 阶段目标输出 token 数。
+    cache_hit_tokens: int = 0  # Prefix Index 返回的最长逻辑命中 token 数。
     seed: int = 0  # 请求级确定性 seed。
     cancel_after_ns: Optional[int] = None  # 相对提交时间的自动取消延迟。
     client_drain_tokens_per_tick: Optional[int] = None  # 客户端排空速率覆盖值。
@@ -107,6 +108,13 @@ class RuntimeRequest:
         CommonUtils.require_non_negative_int(
             self.output_tokens, "output_tokens", RuntimeLoopError
         )
+        CommonUtils.require_non_negative_int(
+            self.cache_hit_tokens, "cache_hit_tokens", RuntimeLoopError
+        )
+        if self.cache_hit_tokens > self.prompt_tokens + self.output_tokens:
+            raise RuntimeLoopError(
+                "cache_hit_tokens cannot exceed total request tokens"
+            )
         CommonUtils.require_non_negative_int(
             self.seed, "seed", RuntimeLoopError
         )
@@ -244,6 +252,7 @@ class RuntimeLoop:
                 tenant_id=request.tenant_id,
                 priority=request.priority,
                 service_cost=service_cost,
+                cache_hit_tokens=request.cache_hit_tokens,
             )
         )
         self._pending[request.request_id] = request

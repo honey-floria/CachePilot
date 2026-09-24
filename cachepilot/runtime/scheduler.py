@@ -47,6 +47,7 @@ class SchedulingRequest:
     tenant_id: str  # 请求所属租户，决定进入哪个 tenant FIFO 子队列。
     priority: SchedulingPriority  # 调度类别，只能是 interactive 或 batch。
     service_cost: int = 1  # 预计工作量；WFQ 用它计算虚拟完成标签。
+    cache_hit_tokens: int = 0  # Prefix Index 返回的最长逻辑命中 token 数。
 
     def __post_init__(self) -> None:
         CommonUtils.require_identifier(
@@ -68,6 +69,11 @@ class SchedulingRequest:
         CommonUtils.require_positive_int(
             self.service_cost, "service_cost", SchedulerError
         )
+        CommonUtils.require_non_negative_int(
+            self.cache_hit_tokens, "cache_hit_tokens", SchedulerError
+        )
+        if self.cache_hit_tokens > self.service_cost:
+            raise SchedulerError("cache_hit_tokens cannot exceed service_cost")
 
 
 @dataclass(frozen=True)
@@ -81,6 +87,34 @@ class ScheduleDecision:
     starvation_promoted: bool               # 是否因达到最大饥饿时间而被强制提升。
     virtual_start: Optional[Fraction]       # WFQ 虚拟开始标签；FCFS 中为空。
     virtual_finish: Optional[Fraction]      # WFQ 虚拟完成标签；FCFS 中为空。
+    cache_boosted: bool = False             # 是否因逻辑 prefix 命中越过基线请求。
+
+
+@dataclass(frozen=True)
+class CacheBoostConfig:
+    """Prefix-aware WFQ 的公平边界配置。"""
+
+    max_consecutive_boosts: int  # 允许连续越过基线 WFQ 的最大次数。
+    max_bypass_wait_ns: int  # 基线请求达到该等待时间后禁止被 cache 绕过。
+    min_tenant_share: Fraction = Fraction(0)  # 被绕过 tenant 的最低历史服务份额。
+
+    def __post_init__(self) -> None:
+        """校验 boost 上限、等待时间和 0..1 范围的最小份额。"""
+
+        CommonUtils.require_positive_int(
+            self.max_consecutive_boosts,
+            "max_consecutive_boosts",
+            SchedulerError,
+        )
+        CommonUtils.require_positive_int(
+            self.max_bypass_wait_ns,
+            "max_bypass_wait_ns",
+            SchedulerError,
+        )
+        if not isinstance(self.min_tenant_share, Fraction):
+            raise SchedulerError("min_tenant_share must be a Fraction")
+        if not Fraction(0) <= self.min_tenant_share <= Fraction(1):
+            raise SchedulerError("min_tenant_share must be between 0 and 1")
 
 
 @dataclass(frozen=True)
@@ -150,7 +184,7 @@ class _TenantQueueScheduler:
 
         now_ns = self._read_clock()
         with self._lock:
-            entry, starvation_promoted = self._select_entry(now_ns)
+            entry, starvation_promoted, cache_boosted = self._select_entry(now_ns)
             if entry is None:
                 return None
             self._remove_head(entry)
@@ -163,6 +197,7 @@ class _TenantQueueScheduler:
                 starvation_promoted=starvation_promoted,
                 virtual_start=entry.virtual_start,
                 virtual_finish=entry.virtual_finish,
+                cache_boosted=cache_boosted,
             )
 
     def snapshot(self) -> SchedulerSnapshot:
@@ -241,7 +276,7 @@ class _TenantQueueScheduler:
     def _select_entry(
         self,
         now_ns: int,  # 本轮选择使用的单调时钟纳秒值。
-    ) -> Tuple[Optional[_QueuedRequest], bool]:
+    ) -> Tuple[Optional[_QueuedRequest], bool, bool]:
         raise NotImplementedError
 
 
@@ -257,13 +292,13 @@ class FCFSScheduler(_TenantQueueScheduler):
     def _select_entry(
         self,
         now_ns: int,  # 本轮选择时间；FCFS 不参与排序。
-    ) -> Tuple[Optional[_QueuedRequest], bool]:
+    ) -> Tuple[Optional[_QueuedRequest], bool, bool]:
         del now_ns
         for priority in _PRIORITY_ORDER:
             heads = self._heads(priority)
             if heads:
-                return min(heads, key=lambda entry: entry.sequence), False
-        return None, False
+                return min(heads, key=lambda entry: entry.sequence), False, False
+        return None, False, False
 
 
 class WFQScheduler(_TenantQueueScheduler):
@@ -332,7 +367,7 @@ class WFQScheduler(_TenantQueueScheduler):
     def _select_entry(
         self,
         now_ns: int,  # 判断饥饿并记录本轮选择的单调时钟纳秒值。
-    ) -> Tuple[Optional[_QueuedRequest], bool]:
+    ) -> Tuple[Optional[_QueuedRequest], bool, bool]:
         all_heads = tuple(
             entry
             for priority in _PRIORITY_ORDER
@@ -344,7 +379,7 @@ class WFQScheduler(_TenantQueueScheduler):
             if now_ns - entry.enqueued_at_ns >= self._max_starvation_ns
         )
         if starved:
-            return min(starved, key=lambda entry: entry.sequence), True
+            return min(starved, key=lambda entry: entry.sequence), True, False
 
         for priority in _PRIORITY_ORDER:
             heads = self._heads(priority)
@@ -356,8 +391,8 @@ class WFQScheduler(_TenantQueueScheduler):
                         entry.sequence,
                         entry.request.request_id,
                     ),
-                ), False
-        return None, False
+                ), False, False
+        return None, False, False
 
     def _after_select(
         self,
@@ -375,3 +410,149 @@ class WFQScheduler(_TenantQueueScheduler):
             (priority.value, self._virtual_time[priority])
             for priority in _PRIORITY_ORDER
         )
+
+
+class PrefixAwareWFQScheduler(WFQScheduler):
+    """只在公平边界内使用逻辑 prefix 命中加分的 WFQ 调度器。
+
+    Cache benefit 等于 ``cache_hit_tokens / tenant_weight``，只影响同一
+    priority 类别的选择分数，不改变原始 WFQ 虚拟完成标签。最大连续 boost、
+    被绕过请求等待时间和 tenant 最小历史服务份额任一触发时，都回退到
+    基线 WFQ 选择。
+    """
+
+    def __init__(
+        self,
+        tenant_weights: Mapping[str, int],  # tenant ID 到正整数权重的映射。
+        max_starvation_ns: int,  # 全局 tenant 队首最大饥饿时间。
+        cache_boost: CacheBoostConfig,  # Cache boost 的额外公平边界。
+        monotonic_ns: Callable[[], int] = time.monotonic_ns,  # 单调逻辑时钟。
+        default_weight: int = 1,  # 未配置 tenant 使用的默认权重。
+    ) -> None:
+        """创建 prefix-aware WFQ 并初始化服务份额统计。"""
+
+        if not isinstance(cache_boost, CacheBoostConfig):
+            raise TypeError("cache_boost must be a CacheBoostConfig")
+        self._cache_boost = cache_boost
+        self._consecutive_cache_boosts = 0
+        self._tenant_service_counts: Dict[str, int] = {}
+        self._selection_cache_boosted = False
+        super().__init__(
+            tenant_weights,
+            max_starvation_ns,
+            monotonic_ns,
+            default_weight,
+        )
+
+    def _select_entry(
+        self,
+        now_ns: int,  # 判断饥饿与 cache bypass 等待边界的逻辑时间。
+    ) -> Tuple[Optional[_QueuedRequest], bool, bool]:
+        """先执行全局饥饿保护，再尝试受限 cache-aware 选择。"""
+
+        all_heads = tuple(
+            entry
+            for priority in _PRIORITY_ORDER
+            for entry in self._heads(priority)
+        )
+        starved = tuple(
+            entry
+            for entry in all_heads
+            if now_ns - entry.enqueued_at_ns >= self._max_starvation_ns
+        )
+        if starved:
+            self._selection_cache_boosted = False
+            return min(starved, key=lambda entry: entry.sequence), True, False
+
+        for priority in _PRIORITY_ORDER:
+            heads = self._heads(priority)
+            if not heads:
+                continue
+            baseline = min(heads, key=self._wfq_order_key)
+            candidate = min(heads, key=self._cache_order_key)
+            cache_boosted = self._can_cache_boost(baseline, candidate, now_ns)
+            self._selection_cache_boosted = cache_boosted
+            return (
+                candidate if cache_boosted else baseline,
+                False,
+                cache_boosted,
+            )
+        self._selection_cache_boosted = False
+        return None, False, False
+
+    def _after_select(self, entry: _QueuedRequest) -> None:
+        """推进 WFQ 虚拟时间并更新连续 boost 与 tenant 服务份额。"""
+
+        super()._after_select(entry)
+        tenant_id = entry.request.tenant_id
+        self._tenant_service_counts[tenant_id] = (
+            self._tenant_service_counts.get(tenant_id, 0) + 1
+        )
+        if self._selection_cache_boosted:
+            self._consecutive_cache_boosts += 1
+        else:
+            self._consecutive_cache_boosts = 0
+
+    @staticmethod
+    def _wfq_order_key(entry: _QueuedRequest) -> Tuple[Fraction, int, str]:
+        """返回与基线 WFQ 相同的稳定排序键。"""
+
+        if entry.virtual_finish is None:
+            raise RuntimeError("WFQ entry is missing its virtual finish tag")
+        return (
+            entry.virtual_finish,
+            entry.sequence,
+            entry.request.request_id,
+        )
+
+    def _cache_order_key(
+        self,
+        entry: _QueuedRequest,  # 要计算 cache-aware 分数的 tenant 队首。
+    ) -> Tuple[Fraction, int, str]:
+        """从虚拟完成标签减去有上限的逻辑 prefix token 收益。"""
+
+        if entry.virtual_finish is None:
+            raise RuntimeError("WFQ entry is missing its virtual finish tag")
+        weight = self._tenant_weights.get(
+            entry.request.tenant_id, self._default_weight
+        )
+        benefit = Fraction(entry.request.cache_hit_tokens, weight)
+        return (
+            entry.virtual_finish - benefit,
+            entry.sequence,
+            entry.request.request_id,
+        )
+
+    def _can_cache_boost(
+        self,
+        baseline: _QueuedRequest,  # 基线 WFQ 将选择的请求。
+        candidate: _QueuedRequest,  # Cache-aware 分数最优的请求。
+        now_ns: int,  # 当前逻辑时间。
+    ) -> bool:
+        """仅在三项公平边界均允许时让 cache candidate 越过基线。"""
+
+        if candidate is baseline or candidate.request.cache_hit_tokens == 0:
+            return False
+        if (
+            self._consecutive_cache_boosts
+            >= self._cache_boost.max_consecutive_boosts
+        ):
+            return False
+        if (
+            now_ns - baseline.enqueued_at_ns
+            >= self._cache_boost.max_bypass_wait_ns
+        ):
+            return False
+        return not self._tenant_below_minimum_share(
+            baseline.request.tenant_id
+        )
+
+    def _tenant_below_minimum_share(self, tenant_id: str) -> bool:
+        """返回被绕过 tenant 当前历史服务份额是否低于保护线。"""
+
+        minimum = self._cache_boost.min_tenant_share
+        total = sum(self._tenant_service_counts.values())
+        if minimum == 0 or total == 0:
+            return False
+        served = self._tenant_service_counts.get(tenant_id, 0)
+        return Fraction(served, total) < minimum

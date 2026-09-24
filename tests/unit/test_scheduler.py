@@ -2,7 +2,9 @@ import unittest
 from fractions import Fraction
 
 from cachepilot.runtime.scheduler import (
+    CacheBoostConfig,
     FCFSScheduler,
+    PrefixAwareWFQScheduler,
     SchedulerError,
     SchedulingPriority,
     SchedulingRequest,
@@ -173,6 +175,109 @@ class WFQSchedulerTests(unittest.TestCase):
         queued_request = request("request-1", "tenant-a", "batch")
 
         self.assertIs(SchedulingPriority.BATCH, queued_request.priority)
+
+
+class PrefixAwareWFQSchedulerTests(unittest.TestCase):
+    def make_scheduler(self, clock, **overrides):
+        values = {
+            "max_consecutive_boosts": 1,
+            "max_bypass_wait_ns": 10,
+            "min_tenant_share": Fraction(0),
+        }
+        values.update(overrides)
+        return PrefixAwareWFQScheduler(
+            {},
+            max_starvation_ns=100,
+            cache_boost=CacheBoostConfig(**values),
+            monotonic_ns=clock,
+        )
+
+    def test_logical_hit_can_boundedly_bypass_baseline_wfq(self):
+        clock = LogicalClock()
+        scheduler = self.make_scheduler(clock)
+        scheduler.enqueue(request("baseline", "tenant-a", service_cost=2))
+        scheduler.enqueue(
+            SchedulingRequest(
+                "cached",
+                "tenant-b",
+                "interactive",
+                service_cost=4,
+                cache_hit_tokens=4,
+            )
+        )
+
+        decision = scheduler.select()
+
+        self.assertEqual("cached", decision.request.request_id)
+        self.assertTrue(decision.cache_boosted)
+
+    def test_max_consecutive_boosts_forces_baseline_selection(self):
+        clock = LogicalClock()
+        scheduler = self.make_scheduler(clock)
+        scheduler.enqueue(request("baseline", "tenant-a", service_cost=2))
+        for tenant_id in ("tenant-b", "tenant-c"):
+            scheduler.enqueue(
+                SchedulingRequest(
+                    "cached-" + tenant_id,
+                    tenant_id,
+                    "interactive",
+                    service_cost=4,
+                    cache_hit_tokens=4,
+                )
+            )
+
+        first = scheduler.select()
+        second = scheduler.select()
+
+        self.assertTrue(first.cache_boosted)
+        self.assertEqual("baseline", second.request.request_id)
+        self.assertFalse(second.cache_boosted)
+
+    def test_wait_boundary_prevents_cache_bypass(self):
+        clock = LogicalClock()
+        scheduler = self.make_scheduler(clock)
+        scheduler.enqueue(request("baseline", "tenant-a", service_cost=2))
+        clock.advance(10)
+        scheduler.enqueue(
+            SchedulingRequest(
+                "cached",
+                "tenant-b",
+                "interactive",
+                service_cost=4,
+                cache_hit_tokens=4,
+            )
+        )
+
+        decision = scheduler.select()
+
+        self.assertEqual("baseline", decision.request.request_id)
+        self.assertFalse(decision.cache_boosted)
+
+    def test_minimum_tenant_share_prevents_repeated_bypass(self):
+        clock = LogicalClock()
+        scheduler = self.make_scheduler(
+            clock,
+            max_consecutive_boosts=10,
+            min_tenant_share=Fraction(1, 4),
+        )
+        scheduler.enqueue(request("baseline", "tenant-a", service_cost=2))
+        for tenant_id in ("tenant-b", "tenant-c"):
+            scheduler.enqueue(
+                SchedulingRequest(
+                    "cached-" + tenant_id,
+                    tenant_id,
+                    "interactive",
+                    service_cost=4,
+                    cache_hit_tokens=4,
+                )
+            )
+
+        first = scheduler.select()
+        second = scheduler.select()
+
+        self.assertTrue(first.cache_boosted)
+        self.assertEqual("baseline", second.request.request_id)
+        self.assertFalse(second.cache_boosted)
 
 
 if __name__ == "__main__":

@@ -53,7 +53,9 @@ from .loop import (
 from .registry import RequestRegistry, RequestSnapshot
 from .resources import ResourceLeaseManager, ResourceLeaseSnapshot
 from .scheduler import (
+    CacheBoostConfig,
     FCFSScheduler,
+    PrefixAwareWFQScheduler,
     ScheduleDecision,
     SchedulerError,
     SchedulerSnapshot,
@@ -106,7 +108,9 @@ __all__ = [
     # 资源所有权、请求状态机和骨架探活服务。
     "ResourceLeaseManager",
     "ResourceLeaseSnapshot",
+    "CacheBoostConfig",
     "FCFSScheduler",
+    "PrefixAwareWFQScheduler",
     "ScheduleDecision",
     "SchedulerError",
     "SchedulerSnapshot",

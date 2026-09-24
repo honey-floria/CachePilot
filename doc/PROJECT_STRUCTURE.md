@@ -95,6 +95,7 @@ CachePilot/
 │   ├── unit/
 │   │   ├── __init__.py                # 单元测试包入口
 │   │   ├── test_empty_service.py      # 空服务端点测试
+│   │   ├── test_prefix_index.py       # 前缀隔离、最长命中和物理边界测试
 │   │   ├── test_registry.py           # Registry 查询、幂等和并发终态测试
 │   │   ├── test_resources.py          # 资源申请、增长、释放和回收测试
 │   │   ├── test_runtime_loop.py       # 三重预算、回收顺序和混合长度测试
@@ -169,7 +170,7 @@ CachePilot/
 | 文件 | 功能 |
 |---|---|
 | `cachepilot/cache/__init__.py` | 声明租户作用域缓存元数据包。 |
-| `cachepilot/cache/prefix_index.py` | 定义包含租户、模型版本、分词器版本、量化配置和 token 前缀的不可变缓存键，并提供租户隔离的精确逻辑前缀索引。目前只支持记录和精确匹配，不支持最长前缀、淘汰或物理 KV 命中。 |
+| `cachepilot/cache/prefix_index.py` | 按 tenant、模型、模型 revision、tokenizer revision、量化配置和 token 序列建立线程安全逻辑索引，提供最长前缀查询、精确删除、作用域失效和命中统计；物理命中保持不可观测。 |
 
 ### 5.3 配置校验：`cachepilot/config/`
 
@@ -210,7 +211,7 @@ CachePilot/
 | `cachepilot/runtime/empty_service.py` | 使用 Python 标准库实现线程化空 HTTP 服务，提供 `/healthz`、`/readyz`、`/metrics` 和统一 404 响应。它只用于环境验收，不执行模型推理，也不实现正式 OpenAI API。 |
 | `cachepilot/runtime/registry.py` | 实现线程安全的内存请求 Registry，按 request ID 和租户作用域幂等键注册、查询和去重，并通过不可变快照暴露当前状态、token 数与状态事件日志。 |
 | `cachepilot/runtime/resources.py` | 实现线程安全的资源租约账本：管理逻辑 KV block 的申请、增长、容量和一次性释放，并独立记录执行器物理 handle。 |
-| `cachepilot/runtime/scheduler.py` | 实现线程安全且可注入逻辑时钟的 FCFS/WFQ 调度：维护 interactive/batch 下的 tenant FIFO 子队列，以精确分数计算 WFQ 虚拟标签，并按最大队首等待时间提供饥饿保护。 |
+| `cachepilot/runtime/scheduler.py` | 实现线程安全且可注入逻辑时钟的 FCFS/WFQ 调度，以及受连续 boost、等待时间、tenant 最小份额和原 WFQ 饥饿上限共同约束的 PrefixAwareWFQScheduler。 |
 | `cachepilot/runtime/kv_planner.py` | 根据模型架构、KV dtype、block size 和服务上下文限制计算请求逻辑 blocks 与理论 KV 字节；只有显式给出 KV 专用字节预算时才换算容量，不从 GPU 总显存推导真实可用容量。 |
 | `cachepilot/runtime/loop.py` | 协调 Scheduler 与 SimExecutor：每轮先回收完成请求并重建 KV 账本，再按 active sequences、batch tokens 和 KV blocks 三重硬预算接纳与推进请求。 |
 | `cachepilot/runtime/state_machine.py` | 实现单请求生命周期状态机、原子状态迁移、事件 ID 幂等与冲突检测、不可逆终态，以及仅在 `EXECUTING` 状态开放的 token 输出登记门禁。 |
@@ -265,6 +266,7 @@ CachePilot/
 | `tests/__init__.py` | 标记顶层测试包。 |
 | `tests/unit/__init__.py` | 标记 CPU 单元测试包。 |
 | `tests/unit/test_empty_service.py` | 启动临时空服务，验证健康、就绪和 Prometheus 文本指标端点均能正确响应。 |
+| `tests/unit/test_prefix_index.py` | 验证最长 token 前缀命中、tenant/模型/tokenizer/量化隔离、逻辑与物理命中边界、删除、作用域失效和统计。 |
 | `tests/unit/test_registry.py` | 验证请求注册与查询、request ID/幂等键去重、租户隔离、状态快照和取消/完成/失败并发竞争只产生一个终态。 |
 | `tests/unit/test_resources.py` | 验证 reservation 申请、增长、容量限制、物理 handle 隔离、一次性释放和所有终态路径回收到基线。 |
 | `tests/unit/test_runtime_loop.py` | 验证完成回收先于同轮接纳、token 额度可部分推进、active 轮转、单请求容量拒绝、混合长短请求不突破三重硬上限及确定性重放。 |
@@ -297,6 +299,7 @@ CachePilot/
 | `doc/adr/0006-fcfs-and-wfq-scheduling.md` | 决定 FCFS/WFQ 的优先级、tenant 子队列、虚拟时间、权重、稳定打破平局和最大饥饿时间语义。 |
 | `doc/adr/0007-sim-executor.md` | 决定 SimExecutor 的逻辑 tick 顺序、prefill/decode 成本、KV 生命周期、输出缓冲、取消/故障和确定性重放语义。 |
 | `doc/adr/0008-runtime-loop-budgets.md` | 决定单 worker 调度循环的完成/回收顺序、完整 KV reservation、实际 KV 账本、逐轮 token 配额和三重硬预算不变量。 |
+| `doc/adr/0009-prefix-index-and-cache-boost.md` | 决定逻辑 prefix 的 tenant/version 隔离、最长 token 前缀查询、物理命中不可观测边界，以及 Prefix-aware WFQ 的三项公平保护。 |
 
 ## 13. 部署与 Notebook
 

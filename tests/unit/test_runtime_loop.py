@@ -1,4 +1,5 @@
 import unittest
+from fractions import Fraction
 
 from cachepilot.executors import LogicalClock, SimExecutor, SimExecutorConfig
 from cachepilot.runtime.loop import (
@@ -7,7 +8,11 @@ from cachepilot.runtime.loop import (
     RuntimeLoopConfig,
     RuntimeRequest,
 )
-from cachepilot.runtime.scheduler import FCFSScheduler
+from cachepilot.runtime.scheduler import (
+    CacheBoostConfig,
+    FCFSScheduler,
+    PrefixAwareWFQScheduler,
+)
 
 
 class RuntimeLoopTests(unittest.TestCase):
@@ -157,6 +162,35 @@ class RuntimeLoopTests(unittest.TestCase):
 
         self.assertEqual(first_ticks, second_ticks)
         self.assertEqual(first_snapshot, second_snapshot)
+
+    def test_runtime_passes_logical_cache_hit_to_prefix_aware_scheduler(self):
+        clock = LogicalClock()
+        executor = SimExecutor(
+            SimExecutorConfig(10, 4, 1, 4, 1, 8, 8),
+            clock,
+        )
+        scheduler = PrefixAwareWFQScheduler(
+            {},
+            max_starvation_ns=100,
+            cache_boost=CacheBoostConfig(1, 50, Fraction(0)),
+            monotonic_ns=clock,
+        )
+        loop = RuntimeLoop(RuntimeLoopConfig(1, 4, 8), scheduler, executor)
+        loop.submit(self.request("baseline", 2, 0, "tenant-a"))
+        loop.submit(
+            RuntimeRequest(
+                "cached",
+                "tenant-b",
+                "interactive",
+                prompt_tokens=4,
+                output_tokens=0,
+                cache_hit_tokens=4,
+            )
+        )
+
+        result = loop.step()
+
+        self.assertEqual(("cached",), result.admitted_request_ids)
 
 
 if __name__ == "__main__":
