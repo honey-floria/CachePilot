@@ -1,0 +1,4 @@
+{"arrival_ms":0,"expected_output_tokens":10,"max_new_tokens":10,"priority":"interactive","prompt_tokens":18,"request_id":"uniform-0000","seed":847876999,"tenant_id":"tenant-0","trace_version":1}
+{"arrival_ms":7,"expected_output_tokens":9,"max_new_tokens":9,"priority":"interactive","prompt_tokens":9,"request_id":"uniform-0001","seed":202142728,"tenant_id":"tenant-1","trace_version":1}
+{"arrival_ms":14,"expected_output_tokens":8,"max_new_tokens":8,"priority":"interactive","prompt_tokens":19,"request_id":"uniform-0002","seed":461060838,"tenant_id":"tenant-0","trace_version":1}
+{"arrival_ms":21,"expected_output_tokens":9,"max_new_tokens":9,"priority":"interactive","prompt_tokens":9,"request_id":"uniform-0003","seed":931247021,"tenant_id":"tenant-1","trace_version":1}

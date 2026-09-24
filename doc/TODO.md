@@ -30,12 +30,12 @@
 - [x] **FCFS 与 WFQ**：按 interactive/batch 和 tenant 子队列实现基线调度，明确 WFQ 虚拟时间、权重和最大饥饿时间。验收：固定 trace 下顺序可重放，低权重 tenant 不永久饥饿。实现见 `cachepilot/runtime/scheduler.py`，语义见 [ADR-0006](adr/0006-fcfs-and-wfq-scheduling.md)，验证见 `tests/unit/test_scheduler.py`。
 - [x] **SimExecutor**：使用可控逻辑时钟模拟 prefill/decode、KV 增长、continuous batching、慢客户端、取消和 worker 故障。验收：相同配置、trace 和 seed 产生一致事件与统计。实现见 `cachepilot/executors/sim.py`，语义见 [ADR-0007](adr/0007-sim-executor.md)，验证见 `tests/unit/test_sim_executor.py`。
 - [x] **调度循环**：每轮先完成与回收，再更新 KV 账本，并按 active sequences、batch tokens 和 KV blocks 三重预算推进请求。验收：混合长短请求不能突破硬上限。实现见 `cachepilot/runtime/loop.py`，语义见 [ADR-0008](adr/0008-runtime-loop-budgets.md)，验证见 `tests/unit/test_runtime_loop.py`。
-- [x] **Prefix Index**：按 tenant、模型/tokenizer/量化版本和 tokenized prefix 建立逻辑索引；cache boost 受公平边界约束。验收：跨 tenant/版本不互相命中，逻辑命中不计作物理命中。实现见 `cachepilot/cache/prefix_index.py` 与 `cachepilot/runtime/scheduler.py`，语义见 [ADR-0009](adr/0009-prefix-index-and-cache-boost.md)，验证见 `tests/unit/test_prefix_index.py` 与 `tests/unit/test_scheduler.py`。
-- [ ] **属性与竞争测试**：覆盖取消/完成竞争、deadline 边界、tenant 限额、重复事件、KV 释放和缓存失效。验收：保存至少一个可重复的故障回归 trace。
+- [x] **Prefix Index**：按 tenant、模型/tokenizer/量化版本和 tokenized prefix 建立逻辑索引；cache boost 受公平边界约束。验收：跨 tenant/版本不互相命中，逻辑命中不计作物理命中。实现见 `cachepilot/cache/prefix_index.py` 与 `cachepilot/runtime/scheduler.py`，语义见 [ADR-0009](adr/0009-prefix-index-and-cache-boost.md)，验证见 `tests/unit/test_prefix_index.py` 与 `tests/unit/test_scheduler.py`。这是简单可靠的 MVP 实现，未来可以换成 Trie 提高效率.
+- [x] **属性与竞争测试**：覆盖取消/完成竞争、deadline 边界、tenant 限额、重复事件、KV 释放和缓存失效。验收证据见 `tests/property/test_runtime_invariants.py` 与 `tests/regression/traces/cancel_finish_race.json`；固定 seed 的取消/完成竞争 trace 可重复验证终态唯一且 KV 回到基线。
 
 ### 1.4 回放与出口
 
-- [ ] **固定 workloads**：实现 Uniform、Mixed-length、Burst、Noisy-neighbor、Shared-prefix、Cancellation-heavy 和 Long-context。验收：trace 有 schema、固定 seed 和可提交的小样例。
+- [x] **固定 workloads**：实现 Uniform、Mixed-length、Burst、Noisy-neighbor、Shared-prefix、Cancellation-heavy 和 Long-context。验收证据见 `workloads/generator.py`、`workloads/*.jsonl` 与 `tests/unit/test_workload_generator.py`；生成器固定 seed、校验 trace v1 schema 约束，并提交七类小样例。
 - [ ] **分析器**：输出逐请求时间线、准入原因、资源峰值、P50/P95/P99、吞吐、公平性、拒绝率和取消率。验收：Strict/Adaptive 与 FCFS/WFQ 可以控制变量比较，并明确标注模拟结果。
 - [ ] **Phase 0 出口**：CPU 测试全部通过；资源不变量成立；固定 trace 可复现；逻辑 KV 与物理 KV 的边界已有 ADR。未满足不得进入 GPU 集成。
 

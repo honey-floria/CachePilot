@@ -1,0 +1,4 @@
+{"arrival_ms":0,"expected_output_tokens":16,"max_new_tokens":16,"priority":"interactive","prompt_tokens":36,"request_id":"cancellation-heavy-0000","seed":847876999,"tenant_id":"tenant-0","trace_version":1}
+{"arrival_ms":4,"cancel_after_ms":6,"expected_output_tokens":14,"max_new_tokens":14,"priority":"interactive","prompt_tokens":19,"request_id":"cancellation-heavy-0001","seed":202142728,"tenant_id":"tenant-1","trace_version":1}
+{"arrival_ms":8,"cancel_after_ms":1,"expected_output_tokens":28,"max_new_tokens":28,"priority":"interactive","prompt_tokens":19,"request_id":"cancellation-heavy-0002","seed":461060838,"tenant_id":"tenant-0","trace_version":1}
+{"arrival_ms":12,"cancel_after_ms":2,"expected_output_tokens":25,"max_new_tokens":25,"priority":"interactive","prompt_tokens":21,"request_id":"cancellation-heavy-0003","seed":898017869,"tenant_id":"tenant-1","trace_version":1}

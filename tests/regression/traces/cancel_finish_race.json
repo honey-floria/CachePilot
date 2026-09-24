@@ -1,0 +1,13 @@
+{
+  "trace_version": 1,
+  "trace_id": "cancel-finish-race-20260924",
+  "seed": 20260924,
+  "request_id_prefix": "regression-race",
+  "rounds": 16,
+  "capacity_blocks": 4,
+  "reserved_blocks": 2,
+  "expected": {
+    "terminal_winners": 1,
+    "remaining_logical_blocks": 0
+  }
+}
