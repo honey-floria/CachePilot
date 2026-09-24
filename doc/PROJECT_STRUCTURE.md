@@ -139,7 +139,7 @@ CachePilot/
 |---|---|
 | `.gitignore` | 定义 Git 忽略规则，排除系统文件、Python 缓存、虚拟环境、构建产物、测试缓存、日志、临时文件、密钥配置和 IDE 本地状态。 |
 | `.python-version` | 将项目 Python 基线固定为 `3.13.15`，供 pyenv 等版本管理工具和契约测试读取。 |
-| `Makefile` | 提供常用开发命令：CPU 依赖安装、Ruff 检查、pytest 测试、综合检查、空服务启动和 Colab 验收。 |
+| `Makefile` | 提供常用开发命令：CPU 依赖安装、Ruff 检查、pytest 测试、综合检查、Phase 0 出口、空服务启动和 Colab 验收。 |
 | `README.md` | 项目首页，概述目标、架构边界、Phase 0–2 路线、完成标准、安装方式和主要文档入口。 |
 | `pyproject.toml` | Python 包构建与项目元数据配置；声明 Python 版本、开发依赖、命令行入口、包发现方式，以及 pytest 和 Ruff 配置。 |
 
@@ -242,6 +242,7 @@ CachePilot/
 |---|---|
 | `benchmarks/README.md` | 说明一次实验必须保存的 manifest、trace、逐请求记录和 summary，并给出分析器命令及有效性边界。 |
 | `benchmarks/analyze.py` | 校验实验 manifest、trace 和逐请求 JSONL；检查版本、时钟、字段、终态和请求 ID 一致性；生成延迟分位数、吞吐量、拒绝率、取消率和 Jain 公平性摘要。 |
+| `benchmarks/phase0_exit.py` | 执行 CPU 测试、固定 workload 重放和逻辑/物理 KV ADR 检查；通过时输出 `PHASE0_EXIT=PASS`，作为 GPU 集成闸门。 |
 | `benchmarks/colab_acceptance.py` | CPU/Colab 骨架验收脚本；检查 Python `3.13.15`，运行 pytest，启动空服务并探测三个健康端点，成功时输出 `COLAB_ACCEPTANCE=PASS`。 |
 
 ## 9. 工作负载：`workloads/`

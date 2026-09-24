@@ -33,6 +33,7 @@ REQUIRED_REQUEST = (
     "terminal_state", *FLOAT_FIELDS, "worker_id", "logical_hit", "physical_hit",
     "reserved_blocks_peak", "estimated_gpu_seconds",
 )
+OPTIONAL_REQUEST = ("admission_reason", "timeline")
 REQUIRED_TRACE = (
     "trace_version", "request_id", "tenant_id", "arrival_ms", "prompt_tokens",
     "expected_output_tokens", "seed",
@@ -211,7 +212,7 @@ def validate_request(
     where = f"request line {line}"
     if not isinstance(record, dict):
         raise ProtocolError(f"{where}: expected a JSON object")
-    _unexpected(record, set(REQUIRED_REQUEST), where)
+    _unexpected(record, set(REQUIRED_REQUEST) | set(OPTIONAL_REQUEST), where)
     _required(record, REQUIRED_REQUEST, where)
     if record["record_type"] != "request" or record["schema_version"] != 1:
         raise ProtocolError(
@@ -242,7 +243,28 @@ def validate_request(
         )
     if record["worker_id"] is not None:
         _nonempty_string(record["worker_id"], f"{where}.worker_id")
+    if "admission_reason" in record and record["admission_reason"] is not None:
+        _nonempty_string(record["admission_reason"], f"{where}.admission_reason")
+    if "timeline" in record:
+        _validate_timeline(record["timeline"], where)
     return record
+
+
+def _validate_timeline(value: Any, where: str) -> None:
+    """校验可选逐阶段时间线，允许执行器写入额外阶段字段。"""
+
+    if not isinstance(value, list):
+        raise ProtocolError(f"{where}.timeline: expected an array")
+    for index, event in enumerate(value):
+        event_where = f"{where}.timeline[{index}]"
+        if not isinstance(event, dict):
+            raise ProtocolError(f"{event_where}: expected an object")
+        _required(event, ("phase", "start_ms", "end_ms"), event_where)
+        _nonempty_string(event["phase"], f"{event_where}.phase")
+        _number(event["start_ms"], f"{event_where}.start_ms")
+        _number(event["end_ms"], f"{event_where}.end_ms")
+        if event["end_ms"] < event["start_ms"]:
+            raise ProtocolError(f"{event_where}: end_ms precedes start_ms")
 
 
 def read_jsonl(path: Path, validator) -> list[dict[str, Any]]:
@@ -315,6 +337,30 @@ def summarize(
         else None
     )
     denominator = len(measured) or 1
+    timelines = []
+    for record in measured:
+        timelines.append(
+            {
+                "request_id": record["request_id"],
+                "tenant_id": record["tenant_id"],
+                "arrival_ms": record["arrival_ms"],
+                "terminal_state": record["terminal_state"],
+                "admission_reason": record.get("admission_reason"),
+                "timeline": record.get("timeline", _derived_timeline(record)),
+                "reserved_blocks_peak": record["reserved_blocks_peak"],
+            }
+        )
+    admission_reasons = Counter(
+        record.get("admission_reason", "unknown") for record in measured
+    )
+    peak_values = [
+        record["reserved_blocks_peak"]
+        for record in measured
+        if record["reserved_blocks_peak"] is not None
+    ]
+    strategy = manifest["strategy"]
+    executor = strategy["executor"].lower()
+    simulated = "sim" in executor
     return {
         "artifact_type": "cachepilot_experiment_summary",
         "schema_version": 1,
@@ -333,9 +379,60 @@ def summarize(
             (counts["CANCELLED"] + counts["TIMED_OUT"]) / denominator
         ),
         "fairness_jain": fairness,
+        "request_timelines": timelines,
+        "admission_reasons": dict(sorted(admission_reasons.items())),
+        "resource_peaks": {
+            "reserved_blocks_peak": max(peak_values) if peak_values else None,
+            "estimated_gpu_seconds_peak": max(
+                (record["estimated_gpu_seconds"] for record in measured
+                 if record["estimated_gpu_seconds"] is not None),
+                default=None,
+            ),
+        },
+        "simulation": {
+            "is_simulated": simulated,
+            "executor": strategy["executor"],
+            "label": "simulated" if simulated else "measured",
+        },
+        "control_variables": {
+            "trace_id": manifest["trace_id"],
+            "seed": manifest["seed"],
+            "model_id": manifest["model"]["id"],
+            "model_revision": manifest["model"]["revision"],
+            "tokenizer_revision": manifest["model"]["tokenizer_revision"],
+            "executor": strategy["executor"],
+            "admission": strategy["admission"],
+            "scheduler": strategy["scheduler"],
+            "router": strategy["router"],
+            "prefix_mode": strategy["prefix_mode"],
+        },
         "quantile_method": "nearest_rank",
         "source": source,
     }
+
+
+def _derived_timeline(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """从协议阶段耗时构造标准时间线；缺失阶段不会伪造时间。"""
+
+    arrival = float(record["arrival_ms"])
+    queue = record["queue_ms"]
+    ttft = record["ttft_ms"]
+    total = record["total_ms"]
+    if queue is None or total is None:
+        return []
+    events = [{"phase": "queue", "start_ms": arrival, "end_ms": arrival + queue}]
+    if ttft is not None:
+        prefill_start = arrival + queue
+        events.append({"phase": "prefill", "start_ms": prefill_start,
+                       "end_ms": prefill_start + ttft})
+        decode_start = prefill_start + ttft
+        decode_end = arrival + total
+        if decode_end >= decode_start:
+            events.append({"phase": "decode", "start_ms": decode_start,
+                           "end_ms": decode_end})
+    events.append({"phase": "request", "start_ms": arrival,
+                   "end_ms": arrival + total})
+    return events
 
 
 def analyze(

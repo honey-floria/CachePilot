@@ -36,8 +36,8 @@
 ### 1.4 回放与出口
 
 - [x] **固定 workloads**：实现 Uniform、Mixed-length、Burst、Noisy-neighbor、Shared-prefix、Cancellation-heavy 和 Long-context。验收证据见 `workloads/generator.py`、`workloads/*.jsonl` 与 `tests/unit/test_workload_generator.py`；生成器固定 seed、校验 trace v1 schema 约束，并提交七类小样例。
-- [ ] **分析器**：输出逐请求时间线、准入原因、资源峰值、P50/P95/P99、吞吐、公平性、拒绝率和取消率。验收：Strict/Adaptive 与 FCFS/WFQ 可以控制变量比较，并明确标注模拟结果。
-- [ ] **Phase 0 出口**：CPU 测试全部通过；资源不变量成立；固定 trace 可复现；逻辑 KV 与物理 KV 的边界已有 ADR。未满足不得进入 GPU 集成。
+- [x] **分析器**：输出逐请求时间线、准入原因、资源峰值、P50/P95/P99、吞吐、公平性、拒绝率和取消率。验收证据见 `benchmarks/analyze.py`、`config/experiment.schema.json` 与 `tests/contract/test_experiment_protocol.py`；`control_variables` 固定对照变量，`simulation` 明确标注模拟/实测结果。
+- [x] **Phase 0 出口**：CPU 测试全部通过；资源不变量成立；固定 trace 可复现；逻辑 KV 与物理 KV 的边界已有 ADR。验收命令为 `python benchmarks/phase0_exit.py`，证据见 [Phase 0 出口验收记录](acceptance/0005-phase0-exit.md)。未满足不得进入 GPU 集成。
 
 ## 2. Phase 1：单 GPU 真实服务（120–180 小时）
 

@@ -86,6 +86,53 @@ class ExperimentProtocolTests(unittest.TestCase):
         self.assertEqual(1, summary["request_count"])
         self.assertEqual(2.0, summary["metrics"]["ttft_ms"]["p50"])
         self.assertEqual("nearest_rank", summary["quantile_method"])
+        self.assertEqual("simulated", summary["simulation"]["label"])
+        self.assertEqual("strict", summary["control_variables"]["admission"])
+        self.assertEqual(1, len(summary["request_timelines"]))
+        self.assertEqual(1, summary["resource_peaks"]["reserved_blocks_peak"])
+
+    def test_request_timeline_and_admission_reason_are_preserved(self):
+        analyzer = load_analyzer()
+        manifest = self.valid_manifest()
+        request = {
+            "record_type": "request",
+            "schema_version": 1,
+            "run_id": "run-1",
+            "request_id": "request-1",
+            "tenant_id": "tenant-a",
+            "seed": 7,
+            "arrival_ms": 0,
+            "prompt_tokens": 8,
+            "expected_output_tokens": 16,
+            "completion_tokens": 0,
+            "terminal_state": "REJECTED",
+            "queue_ms": None,
+            "ttft_ms": None,
+            "tpot_ms": None,
+            "total_ms": None,
+            "worker_id": None,
+            "logical_hit": False,
+            "physical_hit": None,
+            "reserved_blocks_peak": None,
+            "estimated_gpu_seconds": None,
+            "admission_reason": "tenant_active_tokens",
+            "timeline": [],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = root / "manifest.json"
+            trace_path = root / "trace.jsonl"
+            requests_path = root / "requests.jsonl"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            trace_path.write_text(json.dumps({
+                "trace_version": 1, "request_id": "request-1",
+                "tenant_id": "tenant-a", "arrival_ms": 0,
+                "prompt_tokens": 8, "expected_output_tokens": 16, "seed": 7,
+            }) + "\n", encoding="utf-8")
+            requests_path.write_text(json.dumps(request) + "\n", encoding="utf-8")
+            summary = analyzer.analyze(manifest_path, requests_path, trace_path)
+        self.assertEqual({"tenant_active_tokens": 1}, summary["admission_reasons"])
+        self.assertEqual([], summary["request_timelines"][0]["timeline"])
 
     @staticmethod
     def valid_manifest():
