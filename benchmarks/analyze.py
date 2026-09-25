@@ -145,8 +145,7 @@ def validate_manifest(manifest: Any) -> dict[str, Any]:
             "context_limit",
         ),
         "strategy": (
-            "version", "executor", "admission", "scheduler", "router",
-            "prefix_mode",
+            "version", "executor", "admission", "scheduler", "prefix_mode",
         ),
     }
     for group, fields in groups.items():
@@ -170,6 +169,10 @@ def validate_manifest(manifest: Any) -> dict[str, Any]:
                 _version_string(value[field], f"manifest.{group}.{field}")
             else:
                 _nonempty_string(value[field], f"manifest.{group}.{field}")
+    if manifest["hardware"]["gpu_count"] > 1:
+        raise ProtocolError(
+            "manifest.hardware.gpu_count: CachePilot supports at most one GPU"
+        )
     model = manifest["model"]
     for field in ("revision", "tokenizer_revision"):
         if not SHA40.fullmatch(model[field]):
@@ -403,7 +406,6 @@ def summarize(
             "executor": strategy["executor"],
             "admission": strategy["admission"],
             "scheduler": strategy["scheduler"],
-            "router": strategy["router"],
             "prefix_mode": strategy["prefix_mode"],
         },
         "quantile_method": "nearest_rank",

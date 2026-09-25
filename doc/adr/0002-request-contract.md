@@ -20,7 +20,8 @@ Content-Type: application/json
 Accept: text/event-stream
 ```
 
-请求体继续采用 ADR-0001 的严格白名单：`model`、`messages`、`stream` 和可选的 `max_tokens`。`stream` 必须为 `true`。
+请求体继续采用 ADR-0001 的严格白名单：`model`、`messages`、`stream` 和可选的
+`max_tokens`。`stream=true` 返回 SSE，`stream=false` 返回普通 JSON。
 
 控制信息只从 HTTP header 读取，不在 JSON 请求体中接受同名字段。
 
@@ -170,7 +171,7 @@ data: [DONE]
 
 | HTTP | 错误码 |
 |---:|---|
-| 400 | `invalid_body`, `unknown_field`, `missing_field`, `invalid_type`, `invalid_messages`, `invalid_message`, `invalid_role`, `text_content_required`, `streaming_required`, `value_out_of_range`, `tenant_required`, `invalid_tenant`, `invalid_priority`, `invalid_deadline`, `invalid_request_id`, `invalid_idempotency_key` |
+| 400 | `invalid_body`, `unknown_field`, `missing_field`, `invalid_type`, `invalid_messages`, `invalid_message`, `invalid_role`, `text_content_required`, `value_out_of_range`, `tenant_required`, `invalid_tenant`, `invalid_priority`, `invalid_deadline`, `invalid_request_id`, `invalid_idempotency_key` |
 | 401/403 | `tenant_not_authorized` |
 | 404 | `model_not_found`, `request_not_found` |
 | 409 | `request_id_conflict`, `idempotency_in_progress`, `idempotency_replay_unavailable`, `idempotency_key_conflict`, `request_terminal` |
@@ -231,4 +232,4 @@ X-Tenant-ID: <tenant>
 - request ID 与幂等键职责分离：前者用于追踪，后者用于去重。
 - 首版不会重放已完成请求的 SSE，客户端必须通过查询接口了解原终态。
 - API usage 与 KV/reservation 统计被明确分离，实验不能混用指标。
-- 未来加入非流式响应、结果重放或更多优先级需要显式修改契约。
+- 未来加入结果重放或更多优先级需要显式修改契约。

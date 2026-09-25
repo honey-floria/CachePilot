@@ -20,7 +20,9 @@ CachePilot 对外提供 OpenAI 风格的聊天生成接口，但首版不能把�
 4. 消息角色仅支持 `system`、`user` 和 `assistant`。
 5. 消息内容仅支持纯文本字符串。
 6. 每个请求只生成一个结果，等价于固定 `n=1`。
-7. 首个端到端输出路径仅支持 `stream=true`，通过 Server-Sent Events（SSE）返回。
+7. 端到端聊天支持 `stream=true` 的 Server-Sent Events（SSE）和 `stream=false`
+   的普通 JSON 响应；两条路径共享同一严格校验、租户、Registry 和 reservation
+   语义。
 8. 请求体首版只接受 `model`、`messages`、`stream` 和 `max_tokens`。
 9. Prefix/KV 元数据强制按 tenant 隔离，不允许跨 tenant 查询、命中或共享。
 
@@ -133,7 +135,6 @@ OpenAI 的 `user` 字段不能作为 CachePilot tenant 身份的替代来源。
 
 ### 其他 API 与运行模式
 
-- 非流式聊天响应
 - Completions API
 - Responses API
 - Embeddings API
@@ -142,7 +143,8 @@ OpenAI 的 `user` 字段不能作为 CachePilot tenant 身份的替代来源。
 - 单请求多 tenant
 - 跨 tenant Prefix/KV 共享
 
-后续 Phase 1 可以通过更新本 ADR 或新增 ADR 增加非流式聊天，但在对应 schema、实现和契约测试完成前不得宣称支持。
+普通响应已在 Phase 1 Gateway 中实现；新增采样、工具和多模态能力仍需单独更新
+本 ADR、schema、实现和契约测试。
 
 ## Tenant 与 Prefix/KV 隔离
 
@@ -170,7 +172,7 @@ tokenized_prefix
 3. 消息对象中的未知字段被拒绝。
 4. `tools=null` 和 `tools=[]` 均被拒绝。
 5. 图片或内容块数组被拒绝。
-6. `stream=false` 被拒绝。
+6. `stream=false` 返回普通 JSON；非布尔 stream 值仍被拒绝。
 7. 与配置不一致的模型 ID 被拒绝。
 8. `n=2` 被拒绝。
 9. 错误类型和空消息列表被拒绝。
@@ -206,7 +208,7 @@ tokenized_prefix
 代价与限制：
 
 - 首版不是完整的 OpenAI API 替代品；
-- 常见采样字段和非流式响应暂时不可用；
+- 常见采样字段、工具调用和多模态输入暂时不可用；
 - 已经使用宽松 OpenAI 请求体的客户端需要先裁剪字段；
 - 每次增加字段都必须同时处理不同执行器的语义和测试。
 

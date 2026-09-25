@@ -8,10 +8,11 @@
 
 CachePilot 是一个面向多租户混合负载的 LLM 推理服务控制层，计划构建在 vLLM、
 PyTorch 等推理执行器之上。它不重新实现 CUDA kernel 或模型内部的连续批处理，
-主要负责请求校验、生命周期管理、KV 容量准入、公平调度、多 GPU 路由、故障恢复、
+主要负责请求校验、生命周期管理、KV 容量准入、公平调度、单卡故障处理、
 遥测和实验分析。
 
-当前仓库仍处于骨架阶段，已经具备以下可执行能力：
+当前仓库已完成 Phase 0 的 CPU 运行时内核，并开始实现 Phase 1 单 GPU 服务，
+已经具备以下可执行能力：
 
 - 严格校验首版聊天补全请求，并规范化租户、优先级、截止时间等请求信息；
 - 防止请求 ID 或幂等键导致的重复提交；
@@ -21,8 +22,7 @@ PyTorch 等推理执行器之上。它不重新实现 CUDA kernel 或模型内�
 - 启动只提供健康检查、就绪检查和指标端点的空 HTTP 服务；
 - 通过 CPU/Colab 流程运行静态检查、测试和服务探活。
 
-真实模型执行器、调度循环和多 GPU Worker 路由尚未实现，
-属于 `doc/TODO.md` 中规划的 Phase 0–2 工作。
+真实模型执行器和生产观测尚未实现，属于 `doc/TODO.md` 中规划的 Phase 1 工作。
 
 ## 2. 文件结构
 
@@ -59,8 +59,6 @@ CachePilot/
 │   │   ├── backends.py                # 可替换生成后端与 CPU 确定性验收后端
 │   │   ├── contracts.py               # 请求契约、规范化和幂等校验
 │   │   └── intake.py                  # 校验通过后的请求接收边界
-│   ├── routing/
-│   │   └── __init__.py                # 多 Worker 路由包占位
 │   ├── runtime/
 │   │   ├── __init__.py                # 运行时包入口并导出服务创建函数
 │   │   ├── adaptive_admission.py      # P95 自适应 KV 准入与增长保护
@@ -142,7 +140,7 @@ CachePilot/
 | `.gitignore` | 定义 Git 忽略规则，排除系统文件、Python 缓存、虚拟环境、构建产物、测试缓存、日志、临时文件、密钥配置和 IDE 本地状态。 |
 | `.python-version` | 将项目 Python 基线固定为 `3.13.15`，供 pyenv 等版本管理工具和契约测试读取。 |
 | `Makefile` | 提供常用开发命令：CPU 依赖安装、Ruff 检查、pytest 测试、综合检查、Phase 0 出口、空服务启动和 Colab 验收。 |
-| `README.md` | 项目首页，概述目标、架构边界、Phase 0–2 路线、完成标准、安装方式和主要文档入口。 |
+| `README.md` | 项目首页，概述单卡目标、架构边界、Phase 0–1 路线、完成标准、安装方式和主要文档入口。 |
 | `pyproject.toml` | Python 包构建与项目元数据配置；声明 Python 版本、开发依赖、命令行入口、包发现方式，以及 pytest 和 Ruff 配置。 |
 
 ## 4. IDE 配置：`.idea/`
@@ -198,13 +196,7 @@ CachePilot/
 | `cachepilot/gateway/contracts.py` | 实现首版聊天补全请求的严格校验与规范化，定义稳定错误结构、请求指纹、请求 ID/幂等键规则，以及线程安全的重复提交防护。纯文本消息同时支持 `stream=true` 和 `stream=false`。 |
 | `cachepilot/gateway/intake.py` | 定义请求进入运行时前的校验边界。只有通过契约校验并完成规范化的请求才会交给下游 `AcceptedRequestSink`，避免无效输入创建生命周期状态或 KV 预留。 |
 
-### 5.6 路由：`cachepilot/routing/`
-
-| 文件 | 功能 |
-|---|---|
-| `cachepilot/routing/__init__.py` | 预留请求路由包；计划在 Phase 2 接入 Worker Directory、最少负载和缓存感知路由。 |
-
-### 5.7 运行时：`cachepilot/runtime/`
+### 5.6 运行时：`cachepilot/runtime/`
 
 | 文件 | 功能 |
 |---|---|
@@ -220,7 +212,7 @@ CachePilot/
 | `cachepilot/runtime/loop.py` | 协调 Scheduler 与 SimExecutor：每轮先回收完成请求并重建 KV 账本，再按 active sequences、batch tokens 和 KV blocks 三重硬预算接纳与推进请求。 |
 | `cachepilot/runtime/state_machine.py` | 实现单请求生命周期状态机、原子状态迁移、事件 ID 幂等与冲突检测、不可逆终态，以及仅在 `EXECUTING` 状态开放的 token 输出登记门禁。 |
 
-### 5.8 遥测：`cachepilot/telemetry/`
+### 5.7 遥测：`cachepilot/telemetry/`
 
 | 文件 | 功能 |
 |---|---|
@@ -280,7 +272,7 @@ CachePilot/
 | `tests/unit/test_sim_executor.py` | 验证逻辑时钟推进、prefill/decode、KV block 增长、continuous batch 补位、慢客户端背压、取消、worker 故障和相同输入完全一致重放。 |
 | `tests/unit/test_utils.py` | 验证共享工具类返回已校验值、拒绝 bool、保留调用方异常类型，并正确执行向上整除和毫秒到纳秒换算。 |
 | `tests/integration/__init__.py` | 标记集成冒烟测试包。 |
-| `tests/integration/test_imports.py` | 验证 cache、config、executors、gateway、routing、runtime 和 telemetry 等包都可以成功导入。 |
+| `tests/integration/test_imports.py` | 验证 cache、config、executors、gateway、runtime 和 telemetry 等包都可以成功导入。 |
 | `tests/contract/__init__.py` | 标记可执行契约测试包。 |
 | `tests/contract/test_experiment_protocol.py` | 验证实验 Schema 是合法 JSON、缺失关键元数据会失败，以及分析器可从协议记录生成摘要。 |
 | `tests/contract/test_model_baseline.py` | 验证模型/分词器 revision、许可证、架构、上下文和依赖版本均被固定，并检查 OpenAPI 只接受选定模型。 |
@@ -292,8 +284,8 @@ CachePilot/
 
 | 文件 | 功能 |
 |---|---|
-| `doc/DESIGN.md` | 总体工程设计，覆盖目标函数、阶段范围、架构、API、状态机、单/多 GPU Runtime、KV 与调度、可观测性、实验方法、安全和验收标准。 |
-| `doc/TODO.md` | 按依赖顺序列出 Phase 0–2 的实施任务、预计工时、硬件资源、风险和功能缩减顺序。 |
+| `doc/DESIGN.md` | 单 GPU 工程设计，覆盖目标函数、阶段范围、架构、API、状态机、KV 与调度、可观测性、实验方法、安全和验收标准。 |
+| `doc/TODO.md` | 按依赖顺序列出 Phase 0–1 的实施任务、预计工时、硬件资源、风险和功能缩减顺序。 |
 | `doc/PROJECT_STRUCTURE.md` | 本文档；集中展示仓库文件树，并用中文解释每个版本控制文件的职责。 |
 | `doc/acceptance/0004-repository-skeleton.md` | 仓库骨架的验收记录，列出交付内容、CPU/Colab 命令、已验证证据和当前限制。 |
 | `doc/adr/0001-initial-api-scope.md` | 决定首版 API 支持范围、严格字段策略、不支持能力，以及 Tenant 与 Prefix/KV 隔离规则。 |

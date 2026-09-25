@@ -24,9 +24,12 @@ python benchmarks/analyze.py \
 - `metrics`：queue、TTFT、TPOT、total 的 P50/P95/P99（`nearest_rank`）；
 - `resource_peaks`：逻辑 KV block 和估算 GPU 秒峰值；
 - `throughput_completion_tokens_per_s`、`fairness_jain`、`rejection_rate` 和 `cancellation_rate`；
-- `control_variables`：trace、seed、模型、executor、admission、scheduler、router 和 prefix 策略；
+- `control_variables`：trace、seed、模型、executor、admission、scheduler 和 prefix 策略；
 - `simulation`：明确标记 `simulated` 或 `measured`，不会把模拟结果误报为真实硬件结果。
 
 对照 Strict/Adaptive 或 FCFS/WFQ 时，必须复用相同 `trace_id`、seed、模型版本和
 executor；只改变 `control_variables.admission` 或 `control_variables.scheduler`，再比较
 同一组指标。
+
+实验 manifest 的 `gpu_count` 只能为 `0`（CPU 模拟）或 `1`（单卡实测）；分析器会
+拒绝任何多 GPU 记录。

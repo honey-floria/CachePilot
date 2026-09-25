@@ -4,9 +4,9 @@
 
 - `pyproject.toml`：固定项目元数据、Python `3.13.15`、pytest/Ruff 入口与 CLI。
 - `requirements/requirements-cpu.txt` 与 `requirements/constraints-cpu.txt`：CPU-only 可编辑安装和精确开发工具版本。
-- `Makefile`：`install-cpu`、`lint`、`test`、`check`、`serve` 和 `colab-acceptance`。
+- `Makefile`：`install-cpu`、`lint`、`test`、`check`、`serve-empty`、`serve` 和 `colab-acceptance`。
 - `cachepilot/runtime/empty_service.py`：标准库空服务，提供 `/healthz`、`/readyz`、`/metrics`。
-- `cachepilot/{runtime,routing,executors,telemetry}` 与 `tests/{unit,integration,load,chaos}`。
+- `cachepilot/{runtime,executors,telemetry}` 与 `tests/{unit,integration,load,chaos}`。
 - `workloads/`、`benchmarks/`、`deploy/` 和 `notebooks/colab_acceptance.ipynb`。
 
 ## CPU/Colab 验收命令
@@ -46,4 +46,4 @@ Notebook 已固定仓库 clone、CPU 安装和上述脚本调用，可在 Google
 39 项通过，1 项因当前沙箱禁止监听本地端口而跳过）；在允许本地 socket 的环境中，
 完整 40 项测试和空服务探活均验证通过。
 
-空服务只用于安装/启动 smoke test，不执行模型推理，不代表 Phase 0–2 已完成。
+空服务只用于安装/启动 smoke test，不执行模型推理，不代表单 GPU 服务已完成。

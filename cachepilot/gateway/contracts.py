@@ -1,6 +1,6 @@
 """CachePilot 首个 API 版本的严格请求契约校验。
 
-本模块刻意不依赖任何 Web 框架。后续可由 FastAPI 封装这些类型，同时确保
+本模块刻意不依赖任何 Web 框架，由 FastAPI Gateway 封装这些类型，同时确保
 该契约仍能在仅有 CPU 的基础环境中执行。
 """
 
@@ -115,7 +115,7 @@ def validate_chat_completion_request(
     configured_model: str,
     max_tokens_limit: int = MAX_MAX_TOKENS,
 ) -> ValidatedChatRequest:
-    """校验并规范化 v1 流式聊天请求。
+    """校验并规范化 v1 聊天请求。
 
     请求头名称不区分大小写。除了解析十进制的截止时间请求头外，不会刻意
     对值进行类型强制转换。
@@ -162,10 +162,10 @@ def validate_chat_completion_request(
         )
 
     stream = body["stream"]
-    if type(stream) is not bool or stream is not True:
+    if type(stream) is not bool:
         raise ContractViolation(
-            "streaming_required",
-            "The first API version requires stream=true.",
+            "invalid_type",
+            "stream must be a boolean.",
             param="stream",
         )
 

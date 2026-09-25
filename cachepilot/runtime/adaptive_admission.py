@@ -12,11 +12,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from cachepilot.runtime.admission import (
     AdmissionError,
-    AdmissionReason,
     StrictAdmissionConfig,
     StrictAdmissionController,
     _AdmissionRequest,

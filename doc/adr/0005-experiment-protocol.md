@@ -6,7 +6,7 @@
 
 ## 背景
 
-如果只保存一张性能表，无法判断结果是否来自不同的模型快照、GPU、驱动、执行器策略或时钟口径。CachePilot 的实验必须既能回放，也能在分析阶段拒绝缺少关键上下文的结果。本 ADR 固定 Phase 0–2 共用的 trace、原始记录和汇总协议；机器可读定义位于 [`config/experiment.schema.json`](../../config/experiment.schema.json)。
+如果只保存一张性能表，无法判断结果是否来自不同的模型快照、GPU、驱动、执行器策略或时钟口径。CachePilot 的实验必须既能回放，也能在分析阶段拒绝缺少关键上下文的结果。本 ADR 固定 Phase 0–1 共用的 trace、原始记录和汇总协议；机器可读定义位于 [`config/experiment.schema.json`](../../config/experiment.schema.json)。
 
 ## 实验运行单位
 
@@ -53,10 +53,10 @@ manifest 的 `seed` 是运行根 seed；trace 每行的 `seed` 是请求 seed。
 
 分析器要求以下元数据完整且非空：
 
-- hardware：主机、平台、CPU、GPU、GPU 数量与显存、NVIDIA driver、CUDA 和 `nvidia-smi topo -m` 拓扑输出；
+- hardware：主机、平台、CPU、GPU、GPU 数量与显存、NVIDIA driver、CUDA 和拓扑信息；`gpu_count` 只能为 `0` 或 `1`；
 - software：CachePilot、Python、OS、executor、PyTorch、Transformers、vLLM 和 git commit；CPU profile 中未安装的 GPU 包必须明确写 `not_installed`，不能省略；
 - model：模型 ID、40 位 revision、tokenizer revision、dtype、量化方式和 context limit；
-- strategy：策略版本、executor、admission、scheduler、router 和 prefix mode。
+- strategy：策略版本、executor、admission、scheduler 和 prefix mode。
 
 版本字段不能使用 `latest`、`main`、`master`、`nightly` 或其他浮动别名。模型 revision 与 tokenizer revision 必须是 ADR-0003 所要求的固定 commit SHA。
 
@@ -80,7 +80,7 @@ python benchmarks/analyze.py \
 
 成功时输出 `EXPERIMENT_VALID` 并生成确定性 JSON；缺少任一关键 manifest 字段、浮动版本、非法时钟、重复 request ID、trace/结果集合不一致或 JSONL 记录不符合 schema 时，以非零状态退出并输出 `EXPERIMENT_INVALID`。因此未带硬件、软件、模型或策略版本的实验不能进入报告。
 
-对照报告还必须注明：执行器能力（Sim/Torch/vLLM）、GPU 数量及拓扑、warm-up 与测量次数、是否包含拒绝/取消请求，以及不能观测物理 KV 时的限制。不得把模拟、单卡、PCIe 双卡和 NVLink 双卡结果合并成一个结论。
+对照报告还必须注明：执行器能力（Sim/Torch/vLLM）、CPU 模拟或单 GPU 环境、warm-up 与测量次数、是否包含拒绝/取消请求，以及不能观测物理 KV 时的限制。不得把模拟结果与单卡实测合并成一个结论；`gpu_count > 1` 的记录直接判为无效。
 
 ## 后果
 
