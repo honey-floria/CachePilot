@@ -28,12 +28,32 @@ class ExperimentProtocolTests(unittest.TestCase):
         )
         self.assertIn("Manifest", payload["$defs"])
         self.assertIn("Summary", payload["$defs"])
+        hardware = payload["$defs"]["Manifest"]["properties"]["hardware"]
+        self.assertEqual(1, hardware["properties"]["gpu_count"]["maximum"])
+        strategy = payload["$defs"]["Manifest"]["properties"]["strategy"]
+        self.assertNotIn("router", strategy["properties"])
 
     def test_manifest_without_hardware_is_invalid(self):
         analyzer = load_analyzer()
         manifest = self.valid_manifest()
         del manifest["hardware"]
         with self.assertRaises(analyzer.ProtocolError):
+            analyzer.validate_manifest(manifest)
+
+    def test_manifest_with_multiple_gpus_is_invalid(self):
+        analyzer = load_analyzer()
+        manifest = self.valid_manifest()
+        manifest["hardware"]["gpu_count"] = 2
+        with self.assertRaisesRegex(
+            analyzer.ProtocolError, "supports at most one GPU"
+        ):
+            analyzer.validate_manifest(manifest)
+
+    def test_manifest_with_router_is_invalid(self):
+        analyzer = load_analyzer()
+        manifest = self.valid_manifest()
+        manifest["strategy"]["router"] = "single"
+        with self.assertRaisesRegex(analyzer.ProtocolError, "unexpected field.*router"):
             analyzer.validate_manifest(manifest)
 
     def test_analyzer_generates_summary_from_protocol_records(self):
@@ -186,7 +206,6 @@ class ExperimentProtocolTests(unittest.TestCase):
                 "executor": "SimExecutor",
                 "admission": "strict",
                 "scheduler": "fcfs",
-                "router": "single",
                 "prefix_mode": "blind",
             },
         }

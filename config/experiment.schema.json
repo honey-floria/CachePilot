@@ -84,7 +84,7 @@
             "platform": {"type": "string", "minLength": 1},
             "cpu": {"type": "string", "minLength": 1},
             "gpu": {"type": "string", "minLength": 1},
-            "gpu_count": {"type": "integer", "minimum": 0},
+            "gpu_count": {"type": "integer", "minimum": 0, "maximum": 1},
             "gpu_memory_bytes": {"type": "integer", "minimum": 0},
             "driver": {"type": "string", "minLength": 1},
             "cuda": {"type": "string", "minLength": 1},
@@ -122,13 +122,12 @@
         "strategy": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["version", "executor", "admission", "scheduler", "router", "prefix_mode"],
+          "required": ["version", "executor", "admission", "scheduler", "prefix_mode"],
           "properties": {
             "version": {"type": "string", "minLength": 1},
             "executor": {"type": "string", "minLength": 1},
             "admission": {"type": "string", "minLength": 1},
             "scheduler": {"type": "string", "minLength": 1},
-            "router": {"type": "string", "minLength": 1},
             "prefix_mode": {"type": "string", "minLength": 1}
           }
         }

@@ -9,7 +9,6 @@ class PackageImportTests(unittest.TestCase):
             "cachepilot.config",
             "cachepilot.executors",
             "cachepilot.gateway",
-            "cachepilot.routing",
             "cachepilot.runtime",
             "cachepilot.telemetry",
         ):

@@ -10,7 +10,6 @@
     "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
     "model_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "prefix_mode": "blind",
-    "router": "single",
     "scheduler": "fcfs",
     "seed": 7,
     "tokenizer_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

@@ -47,7 +47,6 @@
     "executor": "SimExecutor",
     "admission": "strict",
     "scheduler": "fcfs",
-    "router": "single",
     "prefix_mode": "blind"
   }
 }

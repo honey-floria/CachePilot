@@ -44,7 +44,6 @@
     "admission": "strict",
     "executor": "SimExecutor",
     "prefix_mode": "blind",
-    "router": "single",
     "scheduler": "wfq",
     "version": "1"
   },

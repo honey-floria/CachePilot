@@ -44,7 +44,6 @@
     "admission": "adaptive",
     "executor": "SimExecutor",
     "prefix_mode": "blind",
-    "router": "single",
     "scheduler": "fcfs",
     "version": "1"
   },
