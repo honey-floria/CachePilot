@@ -79,11 +79,23 @@ CPU 确定性模拟
 ```bash
 python3 -m pip install -r requirements/requirements-cpu.txt
 make check
-make serve  # 另一个终端访问 /healthz、/readyz、/metrics
+make serve-empty  # 另一个终端访问 /healthz、/readyz、/metrics
 ```
 
 `make lint` 使用固定版本 Ruff，`make test` 使用固定版本 pytest。空服务只返回
 健康/就绪/metrics 探活结果，不执行模型推理，也不代表 Phase 0–2 已完成。
+
+### Phase 1 Gateway
+
+安装 CPU 依赖后可启动 FastAPI Gateway：
+
+```bash
+make serve
+```
+
+Gateway 默认使用固定模型配置和确定性 CPU 开发后端，提供普通/流式聊天、
+tenant 配额、查询、取消、`/healthz`、`/readyz` 与 `/metrics`。该后端只用于
+API/SSE/生命周期验收，不代表 Torch 或 vLLM 已接入真实模型生成。
 
 Google Colab 验收可直接打开 [`notebooks/colab_acceptance.ipynb`](notebooks/colab_acceptance.ipynb) 笔记本，
 依次运行固定 CPU 安装和 `python benchmarks/colab_acceptance.py`。脚本会检查

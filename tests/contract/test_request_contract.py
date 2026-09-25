@@ -141,10 +141,23 @@ class RequestValidationTests(unittest.TestCase):
         ]
         self.assert_violation("text_content_required", body=body)
 
-    def test_stream_false_is_rejected(self):
+    def test_stream_false_is_accepted_for_non_streaming_chat(self):
         body = valid_body()
         body["stream"] = False
-        self.assert_violation("streaming_required", body=body)
+        request = validate_chat_completion_request(
+            body,
+            valid_headers(),
+            configured_model=CONFIGURED_MODEL,
+        )
+
+        self.assertFalse(request.stream)
+
+    def test_stream_must_be_a_strict_boolean(self):
+        for stream in (None, 1, "true"):
+            body = valid_body()
+            body["stream"] = stream
+            with self.subTest(stream=stream):
+                self.assert_violation("invalid_type", body=body)
 
     def test_unconfigured_model_is_rejected(self):
         body = valid_body()
@@ -356,7 +369,10 @@ class OpenAPIContractTests(unittest.TestCase):
             {"model", "messages", "stream", "max_tokens"},
             set(request_schema["properties"]),
         )
-        self.assertTrue(request_schema["properties"]["stream"]["const"])
+        self.assertEqual(
+            "boolean",
+            request_schema["properties"]["stream"]["type"],
+        )
 
     def test_all_internal_openapi_references_resolve(self):
         def walk(value):

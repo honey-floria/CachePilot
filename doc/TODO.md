@@ -43,7 +43,7 @@
 
 ### 2.1 端到端服务
 
-- [ ] **Gateway/API**：FastAPI 实现参数验证、tenant 身份、配额、普通/流式聊天、请求查询/取消和健康检查。验收：标准客户端可解析 SSE；非法请求不占 reservation。
+- [x] **Gateway/API**：FastAPI 实现参数验证、tenant 身份、配额、普通/流式聊天、请求查询/取消和健康检查。验收：标准客户端可解析 SSE；非法请求不占 reservation。实现见 cachepilot/gateway/api.py 与 tests/integration/test_gateway_api.py；当前默认后端是明确标注的确定性 CPU 开发后端，真实 Torch/vLLM 适配器仍按后续任务接入。
 - [ ] **流控与取消**：断连、显式取消和执行超时传播到 Scheduler 与 Executor；SSE 使用有界缓冲和慢客户端超时。验收：慢读、断连和重复取消不会无限缓冲或泄漏请求。
 - [ ] **TorchExecutor**：先实现小模型单请求生成；仅在正确处理 padding、position、mask、停止条件和不等长序列后实现教学型 batching。验收：功能和限制有测试；未实现时不宣称 continuous batching。
 - [ ] **VllmExecutor**：通过锁定版本的稳定接口转发 prompt、stream、abort 和 usage。验收：请求 ID、错误、取消与 token 数可核对；不重复实现 vLLM 内部 batching。

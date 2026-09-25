@@ -1,3 +1,8 @@
 # 仓库骨架的 CPU 开发/测试直接依赖固定版本。
+fastapi==0.115.12
+httpx==0.28.1
+pydantic==2.11.4
 pytest==8.3.5
 ruff==0.9.10
+starlette==0.46.2
+uvicorn==0.34.2

@@ -2,14 +2,14 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CachePilot API",
-    "version": "0.1.0",
-    "description": "严格的初始 API 契约。仅支持本文档中明确描述的功能。"
+    "version": "0.2.0",
+    "description": "Phase 1 Gateway 契约。支持严格参数校验、普通聊天响应和 SSE 流。"
   },
   "paths": {
     "/v1/chat/completions": {
       "post": {
         "operationId": "createChatCompletion",
-        "summary": "创建纯文本流式聊天补全",
+        "summary": "创建纯文本普通或流式聊天补全",
         "parameters": [
           {
             "$ref": "#/components/parameters/TenantId"
@@ -53,7 +53,7 @@
         },
         "responses": {
           "200": {
-            "description": "SSE 流。正常结束块或错误事件之后均会发送 data: [DONE]。",
+            "description": "stream=false 返回 JSON；stream=true 返回 SSE，并以 data: [DONE] 结束。",
             "headers": {
               "X-Request-ID": {
                 "$ref": "#/components/headers/RequestId"
@@ -66,6 +66,11 @@
               }
             },
             "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              },
               "text/event-stream": {
                 "schema": {
                   "type": "string"
@@ -91,6 +96,9 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -283,6 +291,21 @@
           }
         }
       },
+      "Forbidden": {
+        "description": "tenant 身份未获当前部署授权。",
+        "headers": {
+          "X-Request-ID": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
       "NotFound": {
         "description": "模型或租户作用域内的请求不存在。",
         "headers": {
@@ -419,7 +442,7 @@
           },
           "stream": {
             "type": "boolean",
-            "const": true
+            "description": "true 返回 SSE；false 返回普通 JSON。"
           },
           "max_tokens": {
             "type": "integer",
@@ -511,6 +534,80 @@
                     "stop",
                     "length",
                     null
+                  ]
+                }
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "object",
+          "created",
+          "model",
+          "choices",
+          "usage"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/RequestId"
+          },
+          "object": {
+            "type": "string",
+            "const": "chat.completion"
+          },
+          "created": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "choices": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "index",
+                "message",
+                "finish_reason"
+              ],
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "const": 0
+                },
+                "message": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "role",
+                    "content"
+                  ],
+                  "properties": {
+                    "role": {
+                      "type": "string",
+                      "const": "assistant"
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "finish_reason": {
+                  "type": "string",
+                  "enum": [
+                    "stop",
+                    "length"
                   ]
                 }
               }

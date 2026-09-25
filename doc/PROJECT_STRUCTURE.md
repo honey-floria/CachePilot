@@ -55,6 +55,8 @@ CachePilot/
 │   │   └── sim.py                     # 逻辑时钟 continuous-batching 模拟器
 │   ├── gateway/
 │   │   ├── __init__.py                # 网关包入口
+│   │   ├── api.py                     # FastAPI Gateway、普通/SSE、查询取消和探活
+│   │   ├── backends.py                # 可替换生成后端与 CPU 确定性验收后端
 │   │   ├── contracts.py               # 请求契约、规范化和幂等校验
 │   │   └── intake.py                  # 校验通过后的请求接收边界
 │   ├── routing/
@@ -190,8 +192,10 @@ CachePilot/
 
 | 文件 | 功能 |
 |---|---|
-| `cachepilot/gateway/__init__.py` | 声明网关契约及 HTTP 辅助组件包。 |
-| `cachepilot/gateway/contracts.py` | 实现首版聊天补全请求的严格校验与规范化，定义稳定错误结构、请求指纹、请求 ID/幂等键规则，以及线程安全的重复提交防护。首版仅接受纯文本消息和 `stream=true`。 |
+| `cachepilot/gateway/__init__.py` | 导出 FastAPI Gateway、契约和可替换生成后端。 |
+| `cachepilot/gateway/api.py` | FastAPI Gateway；串联严格校验、tenant 授权、Registry、Strict Admission、普通 JSON、SSE、请求查询/取消、健康检查和 Prometheus 文本指标。 |
+| `cachepilot/gateway/backends.py` | 定义可替换的生成后端与 prompt token 计数边界，并提供只用于 API 验收的确定性 CPU 后端。 |
+| `cachepilot/gateway/contracts.py` | 实现首版聊天补全请求的严格校验与规范化，定义稳定错误结构、请求指纹、请求 ID/幂等键规则，以及线程安全的重复提交防护。纯文本消息同时支持 `stream=true` 和 `stream=false`。 |
 | `cachepilot/gateway/intake.py` | 定义请求进入运行时前的校验边界。只有通过契约校验并完成规范化的请求才会交给下游 `AcceptedRequestSink`，避免无效输入创建生命周期状态或 KV 预留。 |
 
 ### 5.6 路由：`cachepilot/routing/`
@@ -234,7 +238,7 @@ CachePilot/
 
 | 文件 | 功能 |
 |---|---|
-| `contracts/openapi.json` | 首版 API 的 OpenAPI 3.1 契约，描述流式聊天补全、请求状态查询和取消端点，以及控制请求头、严格请求对象、SSE 响应和错误响应。该文件表达目标接口，不代表所有端点已有 HTTP 实现。 |
+| `contracts/openapi.json` | Phase 1 API 的 OpenAPI 3.1 契约，描述普通/流式聊天补全、请求状态查询和取消端点，以及控制请求头、严格请求对象、SSE 响应和错误响应。 |
 
 ## 8. 基准与验收：`benchmarks/`
 

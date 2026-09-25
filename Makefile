@@ -1,4 +1,4 @@
-.PHONY: install-cpu lint test check phase0-exit serve colab-acceptance
+.PHONY: install-cpu lint test check phase0-exit serve serve-empty colab-acceptance
 
 PYTHON ?= python3
 
@@ -17,6 +17,9 @@ phase0-exit:
 	$(PYTHON) benchmarks/phase0_exit.py
 
 serve:
+	$(PYTHON) -m cachepilot.gateway.api
+
+serve-empty:
 	$(PYTHON) -m cachepilot.runtime.empty_service
 
 colab-acceptance:
