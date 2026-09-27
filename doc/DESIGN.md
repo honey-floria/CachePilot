@@ -240,12 +240,16 @@ request_cost = gpu_hour_price × attributed_gpu_seconds / 3600
 
 ```text
 cachepilot_requests_total{tenant, model, state}
+cachepilot_requests_started_total
 cachepilot_ttft_seconds
 cachepilot_tpot_seconds
 cachepilot_queue_wait_seconds
+cachepilot_prefill_seconds
+cachepilot_decode_seconds
 cachepilot_active_sequences
-cachepilot_kv_blocks{state="reserved|used|free"}
-cachepilot_admission_total{decision, reason}
+cachepilot_logical_kv_blocks{state="reserved"}
+cachepilot_admission_total{status, reason}
+cachepilot_errors_total{code, stage}
 cachepilot_prefix_events_total{kind="logical|physical", outcome}
 cachepilot_executor_healthy
 cachepilot_estimated_cost_total{tenant, model, stage}
@@ -253,6 +257,10 @@ cachepilot_estimated_cost_total{tenant, model, stage}
 
 Prometheus label 不包含 request ID、prompt 或 prefix key。逐请求信息进入结构化 trace
 和 ledger，而不是高基数 metrics。
+
+Gateway 的逐请求 trace 记录 request/tenant/model、准入状态与原因、prompt token 数（不含
+prompt 内容）、queue/prefill/decode/TTFT/TPOT/total 阶段耗时、逻辑 KV block、终态和
+错误代码；Prometheus 只保留 model、tenant、state、reason、stage 等受控低基数 label。
 
 ### 8.2 Trace
 

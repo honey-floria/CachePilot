@@ -60,6 +60,9 @@ class GatewayAPITests(unittest.TestCase):
         metrics = client.get("/metrics")
         self.assertEqual(200, metrics.status_code)
         self.assertIn("cachepilot_gateway_up 1", metrics.text)
+        self.assertNotIn("request_id=", metrics.text)
+        self.assertNotIn("prompt=", metrics.text)
+        self.assertNotIn("prefix_key=", metrics.text)
         self.assertIsNotNone(app.state.gateway_runtime)
 
     def test_non_streaming_chat_and_tenant_scoped_query(self):
@@ -82,6 +85,11 @@ class GatewayAPITests(unittest.TestCase):
         )
         self.assertEqual(200, query.status_code)
         self.assertEqual("FINISHED", query.json()["state"])
+        telemetry = query.json()["telemetry"]
+        self.assertEqual("admitted", telemetry["admission_reason"])
+        self.assertEqual("FINISHED", telemetry["terminal_state"])
+        self.assertEqual(1, telemetry["logical_kv_blocks"])
+        self.assertIsNotNone(telemetry["total_ms"])
         hidden = client.get(
             "/v1/requests/normal-1",
             headers={"X-Tenant-ID": "team-b"},

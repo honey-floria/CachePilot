@@ -68,7 +68,15 @@ class ExperimentProtocolTests(unittest.TestCase):
         manifest = self.valid_manifest()
         request = self.valid_request()
         request["physical_hit"] = True
-        with self.assertRaisesRegex(analyzer.ProtocolError, "must be null"):
+        with self.assertRaisesRegex(analyzer.ProtocolError, "cannot verify"):
+            analyzer.validate_request(request, 1, manifest)
+
+    def test_signal_without_physical_observation_is_invalid(self):
+        analyzer = load_analyzer()
+        manifest = self.valid_manifest()
+        request = self.valid_request()
+        request["physical_hit_signal"] = "executor_private_counter"
+        with self.assertRaisesRegex(analyzer.ProtocolError, "without an observation"):
             analyzer.validate_request(request, 1, manifest)
 
     def test_analyzer_generates_summary_from_protocol_records(self):
@@ -125,6 +133,20 @@ class ExperimentProtocolTests(unittest.TestCase):
         self.assertEqual("strict", summary["control_variables"]["admission"])
         self.assertEqual(1, len(summary["request_timelines"]))
         self.assertEqual(1, summary["resource_peaks"]["reserved_blocks_peak"])
+        self.assertEqual(0, summary["metrics"]["prefill_ms"]["count"])
+        self.assertEqual(0, summary["metrics"]["decode_ms"]["count"])
+        self.assertEqual(
+            {
+                "logical_hits": 0,
+                "logical_misses": 1,
+                "physical_hits": None,
+                "physical_misses": None,
+                "physical_hit_observability": "unobservable",
+                "physical_hit_display": "不可观测",
+                "physical_hit_signal": None,
+            },
+            summary["prefix_observation"],
+        )
 
     def test_request_timeline_and_admission_reason_are_preserved(self):
         analyzer = load_analyzer()
@@ -168,6 +190,21 @@ class ExperimentProtocolTests(unittest.TestCase):
             summary = analyzer.analyze(manifest_path, requests_path, trace_path)
         self.assertEqual({"tenant_active_tokens": 1}, summary["admission_reasons"])
         self.assertEqual([], summary["request_timelines"][0]["timeline"])
+
+    def test_optional_stage_and_error_fields_are_validated(self):
+        analyzer = load_analyzer()
+        manifest = self.valid_manifest()
+        request = self.valid_request()
+        request.update(
+            {
+                "prefill_ms": 2.5,
+                "decode_ms": 7.5,
+                "error_code": "executor_failed",
+                "error_stage": "executor",
+            }
+        )
+        validated = analyzer.validate_request(request, 1, manifest)
+        self.assertEqual(2.5, validated["prefill_ms"])
 
     @staticmethod
     def valid_request():

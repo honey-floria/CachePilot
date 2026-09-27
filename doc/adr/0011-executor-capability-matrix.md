@@ -28,12 +28,15 @@ Sim、Torch 和 vLLM 的执行语义不同，不能只因为字段名相同就�
 - `reserved_blocks_peak` 永远是 CachePilot 逻辑 reservation，不得改名或解释为
   GPU 物理 KV。
 - `logical_hit` 是 tenant/version 隔离的控制层信号；`physical_hit` 只有执行器提供
-  可验证信号时才能为布尔值。当前三个执行器都必须写 `null`。
+  能力矩阵声明的可验证信号时才能为布尔值，并且原始记录必须同时写入完全匹配的
+  `physical_hit_signal`。当前三个执行器都没有该信号，因此必须写 `null`。
 - 取消指标只有取消机制语义相同时才能聚合；模拟终态、协作 stopping criteria 和
   vLLM abort 分属三种语义。
 
 `benchmarks/analyze.py` 校验 manifest 中 software/strategy 的执行器名称一致，并在
-当前能力不可观测时拒绝非空 `physical_hit`。跨运行比较必须经过：
+当前能力不可观测时拒绝非空 `physical_hit`，信号与命中值不成对或来源不匹配时也
+拒绝记录。汇总的 `prefix_observation` 会把物理命中计数保留为 `null`，并明确显示
+`不可观测`，而不是把缺失信号解释成 miss。跨运行比较必须经过：
 
 ```bash
 python -m benchmarks.compare \

@@ -39,7 +39,12 @@ from cachepilot.runtime.admission import (
 )
 from cachepilot.runtime.kv_planner import KVModelSpec, KVPlanner
 from cachepilot.runtime.registry import RequestRegistry, RequestSnapshot
-from cachepilot.runtime.state_machine import InvalidTransitionError, RequestState
+from cachepilot.runtime.state_machine import (
+    InvalidTransitionError,
+    RequestState,
+    TransitionResult,
+)
+from cachepilot.telemetry import TelemetryCollector
 
 
 _TENANT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -130,6 +135,7 @@ class GatewayRuntime:
         token_counter: Optional[PromptTokenCounter] = None,
         registry: Optional[RequestRegistry] = None,
         admission: Optional[StrictAdmissionController] = None,
+        telemetry: Optional[TelemetryCollector] = None,
     ) -> None:
         if settings.stream_buffer_tokens < 1:
             raise ValueError("stream_buffer_tokens must be positive")
@@ -142,10 +148,9 @@ class GatewayRuntime:
             settings.total_kv_blocks - settings.safety_kv_blocks
         )
         self.admission = admission or _build_admission(settings)
+        self.telemetry = telemetry or TelemetryCollector()
         self._usage_lock = threading.Lock()
         self._completion_tokens: Dict[str, int] = {}
-        self._requests_total = 0
-        self._invalid_requests_total = 0
 
     def prepare(
         self,
@@ -162,7 +167,7 @@ class GatewayRuntime:
                 max_tokens_limit=min(4096, self.settings.context_limit),
             )
         except ContractViolation as exc:
-            self._increment_invalid_requests()
+            self._increment_invalid_requests(exc.code)
             raise GatewayError(
                 exc.code,
                 exc.message,
@@ -173,7 +178,7 @@ class GatewayRuntime:
             ) from exc
 
         if request.tenant_id not in self.settings.tenant_limits:
-            self._increment_invalid_requests()
+            self._increment_invalid_requests("tenant_not_authorized", "identity")
             raise GatewayError(
                 "tenant_not_authorized",
                 "The tenant is not authorized for this deployment.",
@@ -185,10 +190,22 @@ class GatewayRuntime:
 
         claim = self.registry.register(request)
         if claim.status is not ClaimStatus.ACCEPTED:
+            self.telemetry.record_error(
+                None,
+                claim.status.value,
+                "idempotency",
+            )
             raise _claim_error(claim.status, claim.request_id)
+
+        self.telemetry.start_request(
+            request.request_id,
+            request.tenant_id,
+            request.model,
+        )
 
         try:
             prompt_tokens = self.token_counter.count_prompt_tokens(request)
+            self.telemetry.set_prompt_tokens(request.request_id, prompt_tokens)
             self._advance_to_queued(request.request_id)
             decision = self.admission.submit(
                 request.request_id,
@@ -196,13 +213,24 @@ class GatewayRuntime:
                 prompt_tokens,
                 request.max_tokens,
             )
+            self.telemetry.record_admission(
+                request.request_id,
+                decision.status.value,
+                decision.reason.value,
+                logical_kv_blocks=(
+                    decision.plan.logical_blocks
+                    if decision.plan is not None
+                    else None
+                ),
+            )
             if decision.status is not AdmissionStatus.ADMITTED:
-                self.admission.release(request.request_id)
-                self.registry.transition(
+                self.telemetry.record_error(
                     request.request_id,
-                    RequestState.REJECTED,
-                    "gateway:rejected:{0}".format(request.request_id),
+                    decision.reason.value,
+                    "admission",
                 )
+                self.admission.release(request.request_id)
+                self._transition_terminal(request.request_id, RequestState.REJECTED)
                 raise _admission_error(decision.reason, request.request_id)
 
             self.registry.transition(
@@ -223,10 +251,16 @@ class GatewayRuntime:
                 RequestState.EXECUTING,
                 "gateway:executing:{0}".format(request.request_id),
             )
+            self.telemetry.mark_stage(request.request_id, "executing")
         except GatewayError:
             raise
         except Exception as exc:
             self.admission.release(request.request_id)
+            self.telemetry.record_error(
+                request.request_id,
+                "internal_error",
+                "admission",
+            )
             self._transition_terminal(request.request_id, RequestState.FAILED)
             raise GatewayError(
                 "internal_error",
@@ -237,7 +271,6 @@ class GatewayRuntime:
 
         with self._usage_lock:
             self._completion_tokens[request.request_id] = 0
-            self._requests_total += 1
         return PreparedChatRequest(
             request=request,
             prompt_tokens=prompt_tokens,
@@ -281,7 +314,12 @@ class GatewayRuntime:
                 self.completion_tokens(prepared.request.request_id),
                 self._finish_reason(prepared.request),
             )
-        except GatewayError:
+        except GatewayError as exc:
+            self.telemetry.record_error(
+                prepared.request.request_id,
+                exc.code,
+                "request",
+            )
             raise
         except asyncio.CancelledError:
             await self.cancel(
@@ -291,6 +329,11 @@ class GatewayRuntime:
             )
             raise
         except Exception as exc:
+            self.telemetry.record_error(
+                prepared.request.request_id,
+                "executor_failed",
+                "executor",
+            )
             self._transition_terminal(
                 prepared.request.request_id,
                 RequestState.FAILED,
@@ -397,6 +440,7 @@ class GatewayRuntime:
                 )
             yield "data: [DONE]\n\n"
         except GatewayError as exc:
+            self.telemetry.record_error(request.request_id, exc.code, "request")
             yield _sse_error(exc)
             yield "data: [DONE]\n\n"
         except asyncio.CancelledError:
@@ -407,6 +451,11 @@ class GatewayRuntime:
             )
             raise
         except Exception:
+            self.telemetry.record_error(
+                request.request_id,
+                "executor_failed",
+                "executor",
+            )
             self._transition_terminal(request.request_id, RequestState.FAILED)
             yield _sse_error(
                 GatewayError(
@@ -475,11 +524,13 @@ class GatewayRuntime:
     def query(self, request_id: str, tenant_id: str) -> Dict[str, Any]:
         snapshot = self._tenant_snapshot(request_id, tenant_id)
         prompt_tokens = self.token_counter.count_prompt_tokens(snapshot.request)
+        trace = self.telemetry.snapshot(request_id)
         return {
             "request_id": request_id,
             "state": snapshot.state.value,
             "terminal": snapshot.terminal,
             "usage": _usage(prompt_tokens, self.completion_tokens(request_id)),
+            "telemetry": trace.as_dict() if trace is not None else None,
         }
 
     async def cancel(
@@ -500,10 +551,9 @@ class GatewayRuntime:
                 request_id=request_id,
             )
         try:
-            result = self.registry.transition(
+            result = self._transition_terminal_result(
                 request_id,
                 RequestState.CANCELLED,
-                "gateway:cancelled:{0}".format(request_id),
             )
         except InvalidTransitionError:
             latest = self.registry.get(request_id)
@@ -528,25 +578,9 @@ class GatewayRuntime:
 
     def metrics(self) -> str:
         snapshot = self.admission.snapshot()
-        with self._usage_lock:
-            requests_total = self._requests_total
-            invalid_total = self._invalid_requests_total
-        return (
-            "# TYPE cachepilot_gateway_up gauge\n"
-            "cachepilot_gateway_up 1\n"
-            "# TYPE cachepilot_requests_total counter\n"
-            "cachepilot_requests_total {0}\n"
-            "# TYPE cachepilot_invalid_requests_total counter\n"
-            "cachepilot_invalid_requests_total {1}\n"
-            "# TYPE cachepilot_active_sequences gauge\n"
-            "cachepilot_active_sequences {2}\n"
-            "# TYPE cachepilot_reserved_kv_blocks gauge\n"
-            "cachepilot_reserved_kv_blocks {3}\n"
-        ).format(
-            requests_total,
-            invalid_total,
-            snapshot.active_sequences,
-            snapshot.reserved_blocks,
+        return self.telemetry.render_prometheus(
+            active_sequences=snapshot.active_sequences,
+            reserved_kv_blocks=snapshot.reserved_blocks,
         )
 
     def _advance_to_queued(self, request_id: str) -> None:
@@ -555,24 +589,33 @@ class GatewayRuntime:
             RequestState.TOKENIZED,
             "gateway:tokenized:{0}".format(request_id),
         )
+        self.telemetry.mark_stage(request_id, "tokenized")
         self.registry.transition(
             request_id,
             RequestState.QUEUED,
             "gateway:queued:{0}".format(request_id),
         )
+        self.telemetry.mark_stage(request_id, "queued")
 
     def _record_generated(self, request_id: str, token_count: int) -> None:
         if type(token_count) is not int or token_count < 1:
             raise ValueError("backend token_count must be a positive integer")
         with self._usage_lock:
             offset = self._completion_tokens[request_id]
+        emitted_tokens = 0
         for index in range(token_count):
-            self.registry.record_token_emission(
+            emitted = self.registry.record_token_emission(
                 request_id,
                 "gateway:token:{0}:{1}".format(request_id, offset + index),
             )
+            if not emitted:
+                break
+            emitted_tokens += 1
+        if emitted_tokens == 0:
+            return
+        self.telemetry.record_token(request_id, emitted_tokens)
         with self._usage_lock:
-            self._completion_tokens[request_id] += token_count
+            self._completion_tokens[request_id] += emitted_tokens
 
     def _finish_reason(self, request: ValidatedChatRequest) -> str:
         if self.completion_tokens(request.request_id) >= request.max_tokens:
@@ -632,18 +675,30 @@ class GatewayRuntime:
 
     def _transition_terminal(self, request_id: str, state: RequestState) -> bool:
         try:
-            result = self.registry.transition(
-                request_id,
-                state,
-                "gateway:{0}:{1}".format(state.value.lower(), request_id),
-            )
-            return result.applied
+            return self._transition_terminal_result(request_id, state).applied
         except InvalidTransitionError:
             return False
 
-    def _increment_invalid_requests(self) -> None:
-        with self._usage_lock:
-            self._invalid_requests_total += 1
+    def _transition_terminal_result(
+        self,
+        request_id: str,
+        state: RequestState,
+    ) -> TransitionResult:
+        result = self.registry.transition(
+            request_id,
+            state,
+            "gateway:{0}:{1}".format(state.value.lower(), request_id),
+        )
+        if result.applied:
+            self.telemetry.finish(request_id, state.value)
+        return result
+
+    def _increment_invalid_requests(
+        self,
+        code: str = "invalid_request",
+        stage: str = "validation",
+    ) -> None:
+        self.telemetry.record_invalid_request(code, stage)
 
 
 def create_app(
@@ -675,7 +730,7 @@ def create_app(
         try:
             body = await request.json()
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
-            runtime._increment_invalid_requests()
+            runtime._increment_invalid_requests("invalid_body")
             raise GatewayError(
                 "invalid_body",
                 "Request body must be valid JSON.",

@@ -225,7 +225,8 @@ CachePilot/
 
 | 文件 | 功能 |
 |---|---|
-| `cachepilot/telemetry/__init__.py` | 预留指标、trace 和成本账本的包边界，当前没有具体采集实现。 |
+| `cachepilot/telemetry/__init__.py` | 导出低基数 Prometheus 指标和逐请求 trace 收集器。 |
+| `cachepilot/telemetry/metrics.py` | 线程安全收集请求数、准入、错误、queue/prefill/decode/TTFT/TPOT、逻辑 KV，并渲染不含 request ID、prompt 或 prefix key 的 Prometheus 文本。 |
 
 ## 6. 机器可读配置：`config/`
 

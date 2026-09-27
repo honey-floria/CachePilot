@@ -2,8 +2,11 @@ import unittest
 
 from cachepilot.executor_capabilities import (
     EXECUTOR_CAPABILITY_MATRIX,
+    CapabilityError,
+    ExecutorCapabilities,
     IncomparableMetricError,
     require_comparable_metric,
+    validate_physical_prefix_observation,
 )
 from cachepilot.executors import SimExecutor, TorchExecutor, VllmExecutor
 
@@ -71,6 +74,21 @@ class ExecutorCapabilityTests(unittest.TestCase):
                 ("TorchExecutor", "VllmExecutor"),
             ),
         )
+
+    def test_physical_hit_requires_declared_verifiable_signal(self):
+        with self.assertRaisesRegex(CapabilityError, "cannot verify"):
+            validate_physical_prefix_observation("VllmExecutor", True, None)
+        with self.assertRaisesRegex(CapabilityError, "without an observation"):
+            validate_physical_prefix_observation(
+                "VllmExecutor", None, "private_counter"
+            )
+        validate_physical_prefix_observation("VllmExecutor", None, None)
+
+    def test_observable_capability_requires_a_signal_declaration(self):
+        values = dict(SimExecutor.capabilities.as_dict())
+        values["physical_prefix_hit_observable"] = True
+        with self.assertRaisesRegex(CapabilityError, "signal declaration"):
+            ExecutorCapabilities(**values)
 
 
 if __name__ == "__main__":

@@ -29,6 +29,7 @@ class ProtocolError(ValueError):
 
 
 FLOAT_FIELDS = ("queue_ms", "ttft_ms", "tpot_ms", "total_ms")
+OPTIONAL_FLOAT_FIELDS = ("prefill_ms", "decode_ms")
 REQUIRED_MANIFEST = (
     "artifact_type", "schema_version", "run_id", "trace_id", "created_at_utc",
     "clock", "seed", "repetition_index", "warmup", "hardware", "software",
@@ -40,7 +41,14 @@ REQUIRED_REQUEST = (
     "terminal_state", *FLOAT_FIELDS, "worker_id", "logical_hit", "physical_hit",
     "reserved_blocks_peak", "estimated_gpu_seconds",
 )
-OPTIONAL_REQUEST = ("admission_reason", "timeline")
+OPTIONAL_REQUEST = (
+    "admission_reason",
+    "timeline",
+    "physical_hit_signal",
+    *OPTIONAL_FLOAT_FIELDS,
+    "error_code",
+    "error_stage",
+)
 REQUIRED_TRACE = (
     "trace_version", "request_id", "tenant_id", "arrival_ms", "prompt_tokens",
     "expected_output_tokens", "seed",
@@ -252,6 +260,9 @@ def validate_request(
         _integer(record["completion_tokens"], f"{where}.completion_tokens")
     for field in FLOAT_FIELDS + ("reserved_blocks_peak", "estimated_gpu_seconds"):
         _number_or_null(record[field], f"{where}.{field}")
+    for field in OPTIONAL_FLOAT_FIELDS:
+        if field in record:
+            _number_or_null(record[field], f"{where}.{field}")
     if not isinstance(record["logical_hit"], bool) or (
         record["physical_hit"] is not True
         and record["physical_hit"] is not False
@@ -261,21 +272,24 @@ def validate_request(
             f"{where}: logical_hit/physical_hit must be boolean "
             "(physical_hit may be null)"
         )
-    capability = _capabilities.capabilities_for_executor(
-        manifest["strategy"]["executor"]
-    )
-    if (
-        record["physical_hit"] is not None
-        and not capability.physical_prefix_hit_observable
-    ):
-        raise ProtocolError(
-            f"{where}.physical_hit: must be null because "
-            f"{capability.executor} cannot verify physical prefix reuse"
+    physical_hit_signal = record.get("physical_hit_signal")
+    try:
+        _capabilities.validate_physical_prefix_observation(
+            manifest["strategy"]["executor"],
+            record["physical_hit"],
+            physical_hit_signal,
         )
+    except _capabilities.CapabilityError as exc:
+        raise ProtocolError(
+            f"{where}.physical_hit: {exc}"
+        ) from exc
     if record["worker_id"] is not None:
         _nonempty_string(record["worker_id"], f"{where}.worker_id")
     if "admission_reason" in record and record["admission_reason"] is not None:
         _nonempty_string(record["admission_reason"], f"{where}.admission_reason")
+    for field in ("error_code", "error_stage"):
+        if field in record and record[field] is not None:
+            _nonempty_string(record[field], f"{where}.{field}")
     if "timeline" in record:
         _validate_timeline(record["timeline"], where)
     return record
@@ -331,7 +345,11 @@ def _nearest_rank(values: list[float], percentile: float) -> float | None:
 
 
 def _metric(records: list[dict[str, Any]], field: str) -> dict[str, Any]:
-    values = [float(record[field]) for record in records if record[field] is not None]
+    values = [
+        float(record[field])
+        for record in records
+        if record.get(field) is not None
+    ]
     return {
         "count": len(values),
         "p50": _nearest_rank(values, 0.50),
@@ -377,6 +395,8 @@ def summarize(
                 "arrival_ms": record["arrival_ms"],
                 "terminal_state": record["terminal_state"],
                 "admission_reason": record.get("admission_reason"),
+                "error_code": record.get("error_code"),
+                "error_stage": record.get("error_stage"),
                 "timeline": record.get("timeline", _derived_timeline(record)),
                 "reserved_blocks_peak": record["reserved_blocks_peak"],
             }
@@ -392,6 +412,12 @@ def summarize(
     strategy = manifest["strategy"]
     capability = _capabilities.capabilities_for_executor(strategy["executor"])
     simulated = capability.timing == "simulated_logical_clock"
+    physical_observations = [
+        record["physical_hit"]
+        for record in measured
+        if record["physical_hit"] is not None
+    ]
+    physical_observable = capability.physical_prefix_hit_observable
     return {
         "artifact_type": "cachepilot_experiment_summary",
         "schema_version": 1,
@@ -403,7 +429,10 @@ def summarize(
         "request_count": len(records),
         "measured_request_count": len(measured),
         "terminal_counts": dict(sorted(counts.items())),
-        "metrics": {field: _metric(measured, field) for field in FLOAT_FIELDS},
+        "metrics": {
+            field: _metric(measured, field)
+            for field in FLOAT_FIELDS + OPTIONAL_FLOAT_FIELDS
+        },
         "throughput_completion_tokens_per_s": throughput,
         "rejection_rate": (counts["REJECTED"] / denominator),
         "cancellation_rate": (
@@ -419,6 +448,25 @@ def summarize(
                  if record["estimated_gpu_seconds"] is not None),
                 default=None,
             ),
+        },
+        "prefix_observation": {
+            "logical_hits": sum(record["logical_hit"] for record in measured),
+            "logical_misses": sum(not record["logical_hit"] for record in measured),
+            "physical_hits": (
+                sum(physical_observations) if physical_observable else None
+            ),
+            "physical_misses": (
+                sum(not hit for hit in physical_observations)
+                if physical_observable
+                else None
+            ),
+            "physical_hit_observability": (
+                "observable" if physical_observable else "unobservable"
+            ),
+            "physical_hit_display": (
+                "可观测" if physical_observable else "不可观测"
+            ),
+            "physical_hit_signal": capability.physical_prefix_hit_signal,
         },
         "simulation": {
             "is_simulated": simulated,
@@ -446,17 +494,22 @@ def _derived_timeline(record: dict[str, Any]) -> list[dict[str, Any]]:
 
     arrival = float(record["arrival_ms"])
     queue = record["queue_ms"]
-    ttft = record["ttft_ms"]
+    prefill = record.get("prefill_ms", record["ttft_ms"])
     total = record["total_ms"]
     if queue is None or total is None:
         return []
     events = [{"phase": "queue", "start_ms": arrival, "end_ms": arrival + queue}]
-    if ttft is not None:
+    if prefill is not None:
         prefill_start = arrival + queue
         events.append({"phase": "prefill", "start_ms": prefill_start,
-                       "end_ms": prefill_start + ttft})
-        decode_start = prefill_start + ttft
-        decode_end = arrival + total
+                       "end_ms": prefill_start + prefill})
+        decode_start = prefill_start + prefill
+        decode_duration = record.get("decode_ms")
+        decode_end = (
+            decode_start + decode_duration
+            if decode_duration is not None
+            else arrival + total
+        )
         if decode_end >= decode_start:
             events.append({"phase": "decode", "start_ms": decode_start,
                            "end_ms": decode_end})

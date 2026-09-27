@@ -28,6 +28,22 @@ class ExecutorCapabilities:
     prefix: str
     physical_prefix_hit_observable: bool
     cancellation: str
+    physical_prefix_hit_signal: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        signal_available = self.physical_prefix_hit_signal is not None
+        if self.physical_prefix_hit_observable != signal_available:
+            raise CapabilityError(
+                "physical prefix observability requires exactly one "
+                "verifiable signal declaration"
+            )
+        if signal_available and (
+            not isinstance(self.physical_prefix_hit_signal, str)
+            or not self.physical_prefix_hit_signal.strip()
+        ):
+            raise CapabilityError(
+                "physical_prefix_hit_signal must be non-empty when declared"
+            )
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -42,6 +58,7 @@ SIM_EXECUTOR_CAPABILITIES = ExecutorCapabilities(
     physical_kv_observable=False,
     prefix="cachepilot_logical_only",
     physical_prefix_hit_observable=False,
+    physical_prefix_hit_signal=None,
     cancellation="simulated_synchronous_terminal_transition",
 )
 
@@ -54,6 +71,7 @@ TORCH_EXECUTOR_CAPABILITIES = ExecutorCapabilities(
     physical_kv_observable=False,
     prefix="cachepilot_logical_only_no_physical_reuse",
     physical_prefix_hit_observable=False,
+    physical_prefix_hit_signal=None,
     cancellation="cooperative_stopping_criteria",
 )
 
@@ -66,6 +84,7 @@ VLLM_EXECUTOR_CAPABILITIES = ExecutorCapabilities(
     physical_kv_observable=False,
     prefix="cachepilot_logical_only_physical_unverified",
     physical_prefix_hit_observable=False,
+    physical_prefix_hit_signal=None,
     cancellation="vllm_abort_by_request_id",
 )
 
@@ -110,6 +129,38 @@ def capabilities_for_executor(executor: str) -> ExecutorCapabilities:
         raise CapabilityError(
             "unknown executor capability: {0}".format(executor)
         ) from exc
+
+
+def validate_physical_prefix_observation(
+    executor: str,
+    physical_hit: Optional[bool],
+    signal: Optional[str],
+) -> None:
+    """仅接受执行器能力声明中可核验来源产生的物理命中。"""
+
+    capability = capabilities_for_executor(executor)
+    if physical_hit is not None and not isinstance(physical_hit, bool):
+        raise CapabilityError("physical_hit must be boolean or None")
+    if signal is not None and (not isinstance(signal, str) or not signal.strip()):
+        raise CapabilityError("physical prefix signal must be non-empty or None")
+    if physical_hit is None:
+        if signal is not None:
+            raise CapabilityError(
+                "physical prefix signal cannot be recorded without an observation"
+            )
+        return
+    expected_signal = capability.physical_prefix_hit_signal
+    if expected_signal is None:
+        raise CapabilityError(
+            "{0} cannot verify physical prefix reuse".format(capability.executor)
+        )
+    if signal != expected_signal:
+        raise CapabilityError(
+            "physical prefix observation for {0} requires signal {1!r}".format(
+                capability.executor,
+                expected_signal,
+            )
+        )
 
 
 def metric_semantic_signature(

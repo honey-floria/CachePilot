@@ -22,7 +22,10 @@ python benchmarks/analyze.py \
 
 - `request_timelines`：逐请求到达时间、终态、准入原因、阶段时间线和 reservation 峰值；
 - `metrics`：queue、TTFT、TPOT、total 的 P50/P95/P99（`nearest_rank`）；
+- 请求 trace 同时保留 `prefill_ms`、`decode_ms`、准入原因、逻辑 KV block 和错误代码；
 - `resource_peaks`：逻辑 KV block 和估算 GPU 秒峰值；
+- `prefix_observation`：逻辑命中计数，以及物理命中的可观测状态；执行器没有
+  可验证信号时，计数为 `null` 并明确显示 `不可观测`；
 - `throughput_completion_tokens_per_s`、`fairness_jain`、`rejection_rate` 和 `cancellation_rate`；
 - `control_variables`：trace、seed、模型、executor、admission、scheduler 和 prefix 策略；
 - `simulation`：明确标记 `simulated` 或 `measured`，不会把模拟结果误报为真实硬件结果。

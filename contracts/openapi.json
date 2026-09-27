@@ -693,6 +693,58 @@
           },
           "usage": {
             "$ref": "#/components/schemas/Usage"
+          },
+          "telemetry": {
+            "$ref": "#/components/schemas/RequestTelemetry"
+          }
+        }
+      },
+      "RequestTelemetry": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "tenant_id",
+          "model",
+          "prompt_tokens",
+          "admission_status",
+          "admission_reason",
+          "logical_kv_blocks",
+          "logical_kv_blocks_peak",
+          "completion_tokens",
+          "terminal_state",
+          "error_code",
+          "error_stage",
+          "queue_ms",
+          "ttft_ms",
+          "tpot_ms",
+          "prefill_ms",
+          "decode_ms",
+          "total_ms",
+          "timeline"
+        ],
+        "properties": {
+          "request_id": {"$ref": "#/components/schemas/RequestId"},
+          "tenant_id": {"type": "string", "minLength": 1},
+          "model": {"type": "string", "minLength": 1},
+          "prompt_tokens": {"type": ["integer", "null"], "minimum": 0},
+          "admission_status": {"type": ["string", "null"], "minLength": 1},
+          "admission_reason": {"type": ["string", "null"], "minLength": 1},
+          "logical_kv_blocks": {"type": ["integer", "null"], "minimum": 0},
+          "logical_kv_blocks_peak": {"type": ["integer", "null"], "minimum": 0},
+          "completion_tokens": {"type": "integer", "minimum": 0},
+          "terminal_state": {"type": ["string", "null"], "minLength": 1},
+          "error_code": {"type": ["string", "null"], "minLength": 1},
+          "error_stage": {"type": ["string", "null"], "minLength": 1},
+          "queue_ms": {"type": ["number", "null"], "minimum": 0},
+          "ttft_ms": {"type": ["number", "null"], "minimum": 0},
+          "tpot_ms": {"type": ["number", "null"], "minimum": 0},
+          "prefill_ms": {"type": ["number", "null"], "minimum": 0},
+          "decode_ms": {"type": ["number", "null"], "minimum": 0},
+          "total_ms": {"type": ["number", "null"], "minimum": 0},
+          "timeline": {
+            "type": "array",
+            "items": {"type": "object"}
           }
         }
       },

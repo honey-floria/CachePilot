@@ -11,6 +11,7 @@ from cachepilot.executor_capabilities import (
     capabilities_for_executor,
     metric_semantic_signature,
     require_comparable_metric,
+    validate_physical_prefix_observation,
 )
 
 from .sim_executor import (
@@ -75,4 +76,5 @@ __all__ = [
     "capabilities_for_executor",
     "metric_semantic_signature",
     "require_comparable_metric",
+    "validate_physical_prefix_observation",
 ]

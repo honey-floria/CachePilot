@@ -51,8 +51,8 @@
 
 ### 2.2 Prefix、观测与成本
 
-- [ ] **Prefix 核验**：逻辑 key 默认 tenant 隔离；仅在执行器提供可验证信号时记录物理命中。验收：缺少物理信号时明确显示“不可观测”。
-- [ ] **指标与 Trace**：记录请求数、准入原因、TTFT、TPOT、queue/prefill/decode 时间、逻辑 KV 和错误。验收：Prometheus label 不含 request ID、prompt 或高基数 prefix key。
+- [x] **Prefix 核验**：逻辑 key 默认 tenant 隔离；仅在执行器提供可验证信号时记录物理命中。验收：`PrefixScopeKey` 强制包含 tenant 与完整模型版本作用域；实验协议只接受能力矩阵声明且来源匹配的 `physical_hit_signal`，当前执行器缺少信号时汇总明确显示“不可观测”。实现见 `cachepilot/cache/prefix_index.py`、`cachepilot/executor_capabilities.py` 与 `benchmarks/analyze.py`，验证见 `tests/unit/test_prefix_index.py`、`tests/unit/test_executor_capabilities.py` 与 `tests/contract/test_experiment_protocol.py`。
+- [x] **指标与 Trace**：记录请求数、准入原因、TTFT、TPOT、queue/prefill/decode 时间、逻辑 KV 和错误。验收：`TelemetryCollector` 输出低基数 Prometheus 指标，label 不含 request ID、prompt 或 prefix key；`GET /v1/requests/{id}` 返回不含 prompt 内容的逐请求阶段 trace。实现见 `cachepilot/telemetry/metrics.py`、`cachepilot/gateway/api.py` 与 `benchmarks/analyze.py`，验证见 `tests/unit/test_telemetry.py`、`tests/integration/test_gateway_api.py` 与 `tests/contract/test_experiment_protocol.py`。
 - [ ] **请求账本**：记录 token、阶段耗时、策略版本、reservation 峰值、命中来源、终态和估算成本。验收：成本可由原始数据重算，并明确标为估算。
 - [ ] **运行手册**：覆盖 KV 压力、TTFT/TPOT 回退、worker 故障和成本突增。验收：单机可导出指标快照和实验报告。
 
