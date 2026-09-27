@@ -44,10 +44,10 @@
 ### 2.1 端到端服务
 
 - [x] **Gateway/API**：FastAPI 实现参数验证、tenant 身份、配额、普通/流式聊天、请求查询/取消和健康检查。验收：标准客户端可解析 SSE；非法请求不占 reservation。实现见 cachepilot/gateway/api.py 与 tests/integration/test_gateway_api.py；当前默认后端是明确标注的确定性 CPU 开发后端，TorchExecutor 与 VllmExecutor 均可显式注入。改动文件：`cachepilot/gateway/api.py`、`cachepilot/gateway/backends.py`、`cachepilot/gateway/__init__.py`、`tests/integration/test_gateway_api.py`。
-- [x] **流控与取消**：断连、显式取消和执行超时传播到 Scheduler 与 Executor；SSE 使用有界缓冲和慢客户端超时。验收：慢读、断连和重复取消不会无限缓冲或泄漏请求。改动文件：`cachepilot/runtime/scheduler.py`、`cachepilot/runtime/loop.py`、`cachepilot/executors/sim.py`、`tests/unit/test_runtime_loop.py`、`doc/adr/0002-request-contract.md`。
+- [x] **流控与取消**：断连、显式取消和执行超时传播到 Scheduler 与 Executor；SSE 使用有界缓冲和慢客户端超时。验收：慢读、断连和重复取消不会无限缓冲或泄漏请求。改动文件：`cachepilot/runtime/scheduler.py`、`cachepilot/runtime/loop.py`、`cachepilot/executors/sim_executor.py`、`tests/unit/test_runtime_loop.py`、`doc/adr/0002-request-contract.md`。
 - [x] **TorchExecutor**：先实现小模型单请求生成；正确处理 padding、position、mask 和停止条件，并按输入宽度切片输出；当前明确不实现不等长 batching。验收：功能和限制有测试。实现见 `cachepilot/executors/torch_executor.py`，验证见 `tests/unit/test_torch_executor.py`。
 - [x] **VllmExecutor**：通过锁定版本的稳定接口转发 prompt、stream、abort 和 usage；batching 明确由 vLLM 拥有。验收：请求 ID、错误、取消与 token 数可核对。实现见 `cachepilot/executors/vllm_executor.py`，验证见 `tests/unit/test_vllm_executor.py`，语义见 [ADR-0010](adr/0010-vllm-executor.md)。
-- [ ] **能力矩阵**：列出 Sim/Torch/vLLM 各自拥有的 batch、物理 KV、prefix 和取消能力。验收：不同语义的指标不会混合比较。
+- [x] **能力矩阵**：列出 Sim/Torch/vLLM 各自拥有的 batch、物理 KV、prefix 和取消能力。验收：不同语义的指标不会混合比较。机器可读矩阵与比较门禁见 `cachepilot/executor_capabilities.py`、`benchmarks/compare.py` 和 [ADR-0011](adr/0011-executor-capability-matrix.md)；分析器会拒绝执行器身份冲突及当前不可观测的物理 prefix 命中。改动文件：`cachepilot/executor_capabilities.py`、`cachepilot/executors/{sim_executor,torch_executor,vllm_executor}.py`、`cachepilot/executors/__init__.py`、`benchmarks/analyze.py`、`benchmarks/compare.py`、`tests/unit/test_executor_capabilities.py`、`tests/contract/test_metric_comparison.py`、`tests/contract/test_experiment_protocol.py`、`doc/adr/0011-executor-capability-matrix.md`。
 
 ### 2.2 Prefix、观测与成本
 

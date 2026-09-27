@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import math
 import re
@@ -15,6 +16,12 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+_capabilities = importlib.import_module("cachepilot.executor_capabilities")
 
 
 class ProtocolError(ValueError):
@@ -173,6 +180,16 @@ def validate_manifest(manifest: Any) -> dict[str, Any]:
         raise ProtocolError(
             "manifest.hardware.gpu_count: CachePilot supports at most one GPU"
         )
+    software_executor = manifest["software"]["executor"]
+    strategy_executor = manifest["strategy"]["executor"]
+    if software_executor != strategy_executor:
+        raise ProtocolError(
+            "manifest: software.executor and strategy.executor must match"
+        )
+    try:
+        _capabilities.capabilities_for_executor(strategy_executor)
+    except _capabilities.CapabilityError as exc:
+        raise ProtocolError("manifest.strategy.executor: {0}".format(exc)) from exc
     model = manifest["model"]
     for field in ("revision", "tokenizer_revision"):
         if not SHA40.fullmatch(model[field]):
@@ -243,6 +260,17 @@ def validate_request(
         raise ProtocolError(
             f"{where}: logical_hit/physical_hit must be boolean "
             "(physical_hit may be null)"
+        )
+    capability = _capabilities.capabilities_for_executor(
+        manifest["strategy"]["executor"]
+    )
+    if (
+        record["physical_hit"] is not None
+        and not capability.physical_prefix_hit_observable
+    ):
+        raise ProtocolError(
+            f"{where}.physical_hit: must be null because "
+            f"{capability.executor} cannot verify physical prefix reuse"
         )
     if record["worker_id"] is not None:
         _nonempty_string(record["worker_id"], f"{where}.worker_id")
@@ -362,8 +390,8 @@ def summarize(
         if record["reserved_blocks_peak"] is not None
     ]
     strategy = manifest["strategy"]
-    executor = strategy["executor"].lower()
-    simulated = "sim" in executor
+    capability = _capabilities.capabilities_for_executor(strategy["executor"])
+    simulated = capability.timing == "simulated_logical_clock"
     return {
         "artifact_type": "cachepilot_experiment_summary",
         "schema_version": 1,

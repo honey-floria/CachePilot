@@ -31,5 +31,18 @@ python benchmarks/analyze.py \
 executor；只改变 `control_variables.admission` 或 `control_variables.scheduler`，再比较
 同一组指标。
 
+跨运行比较先经过能力语义门禁：
+
+```bash
+python -m benchmarks.compare \
+  --metric ttft_ms \
+  runs/run-a/summary.json \
+  runs/run-b/summary.json
+```
+
+Sim 逻辑时钟延迟与真实执行器延迟、不同 batch 语义的吞吐、不可观测的物理 KV/
+prefix，以及不同取消机制的指标会返回 `COMPARISON_INVALID`。比较工具只保留各运行
+原始汇总值和共同语义签名，不产生跨语义聚合值。
+
 实验 manifest 的 `gpu_count` 只能为 `0`（CPU 模拟）或 `1`（单卡实测）；分析器会
 拒绝任何多 GPU 记录。

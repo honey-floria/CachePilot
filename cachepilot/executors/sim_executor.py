@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Deque, Dict, Mapping, Optional, Tuple
 
+from cachepilot.executor_capabilities import SIM_EXECUTOR_CAPABILITIES
 from cachepilot.utils import CommonUtils
 
 
@@ -256,6 +257,11 @@ class _SimRequestRecord:
 
 class SimExecutor:
     """单线程、tick 驱动的确定性 continuous-batching 模拟器。"""
+
+    capabilities = SIM_EXECUTOR_CAPABILITIES
+    supports_batching = True
+    batching_owner = "cachepilot_simulator"
+    implements_batching = True
 
     def __init__(
         self,

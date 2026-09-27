@@ -56,6 +56,21 @@ class ExperimentProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(analyzer.ProtocolError, "unexpected field.*router"):
             analyzer.validate_manifest(manifest)
 
+    def test_manifest_executor_names_must_match(self):
+        analyzer = load_analyzer()
+        manifest = self.valid_manifest()
+        manifest["software"]["executor"] = "TorchExecutor"
+        with self.assertRaisesRegex(analyzer.ProtocolError, "must match"):
+            analyzer.validate_manifest(manifest)
+
+    def test_unobservable_physical_hit_is_invalid(self):
+        analyzer = load_analyzer()
+        manifest = self.valid_manifest()
+        request = self.valid_request()
+        request["physical_hit"] = True
+        with self.assertRaisesRegex(analyzer.ProtocolError, "must be null"):
+            analyzer.validate_request(request, 1, manifest)
+
     def test_analyzer_generates_summary_from_protocol_records(self):
         analyzer = load_analyzer()
         manifest = self.valid_manifest()
@@ -153,6 +168,31 @@ class ExperimentProtocolTests(unittest.TestCase):
             summary = analyzer.analyze(manifest_path, requests_path, trace_path)
         self.assertEqual({"tenant_active_tokens": 1}, summary["admission_reasons"])
         self.assertEqual([], summary["request_timelines"][0]["timeline"])
+
+    @staticmethod
+    def valid_request():
+        return {
+            "record_type": "request",
+            "schema_version": 1,
+            "run_id": "run-1",
+            "request_id": "request-1",
+            "tenant_id": "tenant-a",
+            "seed": 7,
+            "arrival_ms": 0,
+            "prompt_tokens": 8,
+            "expected_output_tokens": 16,
+            "completion_tokens": 16,
+            "terminal_state": "FINISHED",
+            "queue_ms": 1.0,
+            "ttft_ms": 2.0,
+            "tpot_ms": 0.5,
+            "total_ms": 10.0,
+            "worker_id": "sim-0",
+            "logical_hit": False,
+            "physical_hit": None,
+            "reserved_blocks_peak": 1,
+            "estimated_gpu_seconds": 0.01,
+        }
 
     @staticmethod
     def valid_manifest():

@@ -1,5 +1,18 @@
 """CachePilot 执行器公共接口。"""
 
+from cachepilot.executor_capabilities import (
+    EXECUTOR_CAPABILITY_MATRIX,
+    SIM_EXECUTOR_CAPABILITIES,
+    TORCH_EXECUTOR_CAPABILITIES,
+    VLLM_EXECUTOR_CAPABILITIES,
+    CapabilityError,
+    ExecutorCapabilities,
+    IncomparableMetricError,
+    capabilities_for_executor,
+    metric_semantic_signature,
+    require_comparable_metric,
+)
+
 from .sim_executor import (
     LogicalClock,
     SimEvent,
@@ -30,6 +43,10 @@ from .vllm_executor import (
 )
 
 __all__ = [
+    "CapabilityError",
+    "EXECUTOR_CAPABILITY_MATRIX",
+    "ExecutorCapabilities",
+    "IncomparableMetricError",
     "LogicalClock",
     "SimEvent",
     "SimEventKind",
@@ -42,14 +59,20 @@ __all__ = [
     "SimRequestSnapshot",
     "SimRequestState",
     "SimulationLimitError",
+    "SIM_EXECUTOR_CAPABILITIES",
     "WorkerUnavailableError",
     "TorchExecutor",
     "TorchExecutorConfig",
     "TorchExecutorError",
     "TorchExecutorUnavailableError",
+    "TORCH_EXECUTOR_CAPABILITIES",
     "VllmExecutor",
     "VllmExecutorConfig",
     "VllmExecutorError",
     "VllmExecutorUnavailableError",
     "VllmUsage",
+    "VLLM_EXECUTOR_CAPABILITIES",
+    "capabilities_for_executor",
+    "metric_semantic_signature",
+    "require_comparable_metric",
 ]

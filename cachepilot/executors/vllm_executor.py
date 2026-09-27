@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from importlib import metadata
 from typing import Any, AsyncIterator, Callable, Optional
 
+from cachepilot.executor_capabilities import VLLM_EXECUTOR_CAPABILITIES
 from cachepilot.gateway.backends import GeneratedText
 from cachepilot.gateway.contracts import ValidatedChatRequest
 
@@ -68,6 +69,7 @@ class VllmUsage:
 class VllmExecutor:
     """把 Gateway ``ChatBackend`` 边界适配到 vLLM AsyncLLMEngine。"""
 
+    capabilities = VLLM_EXECUTOR_CAPABILITIES
     supports_batching = True
     batching_owner = "vllm"
     implements_batching = False

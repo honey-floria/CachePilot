@@ -13,6 +13,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Iterable, Mapping, Optional, Sequence
 
+from cachepilot.executor_capabilities import TORCH_EXECUTOR_CAPABILITIES
 from cachepilot.gateway.backends import GeneratedText
 from cachepilot.gateway.contracts import ValidatedChatRequest
 
@@ -80,7 +81,10 @@ class TorchExecutor:
     下载权限的环境测试输入张量和停止条件。未注入时才从 Transformers 加载模型。
     """
 
+    capabilities = TORCH_EXECUTOR_CAPABILITIES
     supports_batching = False
+    batching_owner = "none"
+    implements_batching = False
 
     def __init__(
         self,
