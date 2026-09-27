@@ -10,6 +10,16 @@
       "console": "integratedTerminal",
       "justMyCode": true,
       "args": []
+    },
+    {
+      "name": "CachePilot: 附加到 GPU",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "127.0.0.1",
+        "port": 5678
+      },
+      "justMyCode": true
     }
   ]
 }
