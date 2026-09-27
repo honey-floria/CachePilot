@@ -85,7 +85,7 @@ initial_service_context_limit <= model_max_context_tokens
 
 | 包 | 版本 |
 |---|---:|
-| tokenizers | 0.23.0 |
+| tokenizers | 0.23.2 |
 | safetensors | 0.6.2 |
 | huggingface-hub | 1.5.0 |
 | torchaudio | 2.11.0 |
@@ -96,7 +96,7 @@ initial_service_context_limit <= model_max_context_tokens
 - vLLM 0.24.0 支持 Python `>=3.10,<3.15`；
 - vLLM 0.24.0 固定依赖 PyTorch 2.11.0；
 - vLLM 0.24.0 要求 Transformers 5.5.3 或更高版本；
-- Transformers 5.5.3 要求 tokenizers `>=0.22.0,<=0.23.0`。
+- Transformers 5.5.3 在当前 Python 3.13 GPU 索引中使用可安装的 tokenizers `0.23.2`；兼容范围记录为 `>=0.22.0,<=0.23.2`。
 
 CachePilot 不使用这些范围作为安装配置，而是在范围内选择精确版本。机器可读版本位于 `config/dependencies.json`，GPU 直接依赖约束位于 `requirements/constraints-gpu.txt`。
 
