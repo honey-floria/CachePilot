@@ -160,6 +160,7 @@ class GatewayRuntime:
         )
         self._usage_lock = threading.Lock()
         self._completion_tokens: Dict[str, int] = {}
+        self._peak_reserved_blocks = 0
 
     def prepare(
         self,
@@ -250,6 +251,11 @@ class GatewayRuntime:
             if decision.plan is None:
                 raise RuntimeError("admitted request must include a KV plan")
             self.registry.reserve(request.request_id, decision.plan.logical_blocks)
+            with self._usage_lock:
+                self._peak_reserved_blocks = max(
+                    self._peak_reserved_blocks,
+                    self.admission.snapshot().reserved_blocks,
+                )
             self.registry.transition(
                 request.request_id,
                 RequestState.ROUTED,
@@ -755,6 +761,7 @@ def create_app(
             "active_sequences": admission.active_sequences,
             "active_capacity": runtime.settings.max_active_sequences,
             "reserved_kv_blocks": admission.reserved_blocks,
+            "peak_reserved_kv_blocks": runtime._peak_reserved_blocks,
             "kv_capacity_blocks": runtime.settings.total_kv_blocks - runtime.settings.safety_kv_blocks,
             "requests": len(traces),
             "completed": len(completed),
