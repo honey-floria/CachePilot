@@ -1,0 +1,7 @@
+-c constraints-gpu.txt
+-e .
+torch
+transformers
+tokenizers
+safetensors
+huggingface-hub

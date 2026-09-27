@@ -25,6 +25,7 @@ dev = [
 ]
 
 [project.scripts]
+cachepilot-server = "cachepilot.server:main"
 cachepilot-empty-service = "cachepilot.runtime.empty_service:main"
 cachepilot-gateway = "cachepilot.gateway.api:main"
 

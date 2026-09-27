@@ -1,4 +1,4 @@
-.PHONY: install-cpu lint test check phase0-exit serve serve-empty colab-acceptance ops-export
+.PHONY: install-cpu install-gpu lint test check phase0-exit serve serve-sim serve-empty colab-acceptance ops-export
 
 PYTHON ?= python3
 BASE_URL ?= http://127.0.0.1:8000
@@ -7,6 +7,9 @@ OUTPUT_DIR ?= artifacts/diagnostics
 
 install-cpu:
 	$(PYTHON) -m pip install -r requirements/requirements-cpu.txt
+
+install-gpu:
+	$(PYTHON) -m pip install -r requirements/requirements-gpu.txt
 
 lint:
 	$(PYTHON) -m ruff check .
@@ -20,6 +23,9 @@ phase0-exit:
 	$(PYTHON) benchmarks/phase0_exit.py
 
 serve:
+	$(PYTHON) main.py
+
+serve-sim:
 	$(PYTHON) -m cachepilot.gateway.api
 
 serve-empty:

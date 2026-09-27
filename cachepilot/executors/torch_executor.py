@@ -100,6 +100,7 @@ class TorchExecutor:
         self.config = config
         self._cancelled: dict[str, str] = {}
         self._cancel_lock = threading.Lock()
+        self._generation_lock = threading.Lock()
         self._ready = False
 
         if model is None:
@@ -214,6 +215,15 @@ class TorchExecutor:
                 yield GeneratedText(text, token_count=1)
 
     def _generate_token_ids(
+        self,
+        request: ValidatedChatRequest,
+    ) -> Sequence[Any]:
+        with self._generation_lock:
+            if self._is_cancelled(request.request_id):
+                return []
+            return self._generate_token_ids_locked(request)
+
+    def _generate_token_ids_locked(
         self,
         request: ValidatedChatRequest,
     ) -> Sequence[Any]:

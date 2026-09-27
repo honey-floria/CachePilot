@@ -1,5 +1,8 @@
 import asyncio
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 
 from cachepilot.executors import TorchExecutor, TorchExecutorConfig
 from cachepilot.gateway.contracts import ChatMessage, ValidatedChatRequest
@@ -106,6 +109,29 @@ def request(max_tokens=4):
 
 
 class TorchExecutorTests(unittest.TestCase):
+    def test_cancelled_request_waiting_for_model_does_not_generate(self):
+        executor = TorchExecutor(
+            TorchExecutorConfig("model", device="cpu"),
+            model=FakeModel(),
+            tokenizer=FakeTokenizer(),
+        )
+        waiting = threading.Event()
+
+        def generate():
+            waiting.set()
+            return executor._generate_token_ids(request())
+
+        with (
+            ThreadPoolExecutor(max_workers=1) as pool,
+            patch.object(executor, "_generate_token_ids_locked") as generation,
+        ):
+            with executor._generation_lock:
+                future = pool.submit(generate)
+                self.assertTrue(waiting.wait(timeout=2))
+                asyncio.run(executor.cancel("torch-1"))
+            self.assertEqual([], future.result(timeout=2))
+            generation.assert_not_called()
+
     def test_count_prompt_tokens_uses_real_tokenizer_boundary(self):
         executor = TorchExecutor(
             TorchExecutorConfig("model", device="cpu"),

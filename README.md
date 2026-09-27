@@ -65,14 +65,32 @@ make check
 make phase0-exit
 ```
 
-启动当前 FastAPI Gateway：
+NVIDIA GPU 服务器启动真实推理（Linux，RTX 30/40 系列等 CUDA GPU）：
+
+```bash
+python -m pip install -r requirements/requirements-gpu.txt
+python main.py --check
+python main.py
+```
+
+入口默认加载固定版本的 `Qwen/Qwen2.5-0.5B-Instruct`，使用 `cuda:0` 和
+`bfloat16`，不会回退到 CPU。`make serve` 等价于 `python main.py`。
+服务器环境准备、请求示例和 VS Code F5 调试见 [GPU 运行指南](doc/GPU_SERVER.md)。
+
+本地 CPU 模拟服务：
+
+```bash
+make serve-sim
+```
+
+GPU 环境安装完成后也可以执行：
 
 ```bash
 make serve
 ```
 
-当前默认后端仍是确定性 CPU 开发后端，只用于 API、SSE 和生命周期验收，不代表真实
-GPU 推理；TorchExecutor 或 VllmExecutor 需要安装各自锁定依赖并显式注入 Gateway。Google Colab 统一运行
+`main.py` 使用真实 TorchExecutor；`cachepilot.gateway.api` 的工厂默认仍保留
+确定性 CPU 后端供测试使用。vLLM 需要另行安装和注入。Google Colab 统一运行
 [`notebooks/colab_acceptance.ipynb`](notebooks/colab_acceptance.ipynb)，该 notebook
 同时覆盖仓库测试、Gateway/SSE、tenant 隔离、取消、真实 TCP HTTP 探活、
 TorchExecutor 单请求以及可选的真实 vLLM stream/abort/usage 验收。
