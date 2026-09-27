@@ -311,7 +311,7 @@ class VllmExecutor:
             from vllm.sampling_params import RequestOutputKind
         except ImportError as exc:
             raise VllmExecutorUnavailableError(
-                "VllmExecutor requires the locked vllm and transformers packages"
+                "Could not import locked vLLM runtime: {0}".format(exc)
             ) from exc
 
         engine_args = AsyncEngineArgs(

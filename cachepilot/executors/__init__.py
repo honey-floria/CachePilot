@@ -1,6 +1,6 @@
 """CachePilot 执行器公共接口。"""
 
-from .sim import (
+from .sim_executor import (
     LogicalClock,
     SimEvent,
     SimEventKind,
