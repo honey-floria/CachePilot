@@ -83,6 +83,8 @@ python main.py
 make serve-sim
 ```
 
+启动后可打开内置控制台 `http://127.0.0.1:8000/ui`，直接发送聊天消息，或在“数据分析”中查看请求吞吐、时延、TTFT、KV 缓存和最近 trace。控制台不需要额外的前端依赖，与现有 OpenAI 风格 API 共用同一运行时。
+
 GPU 环境安装完成后也可以执行：
 
 ```bash

@@ -14,7 +14,7 @@ from typing import Any, AsyncIterator, Dict, Mapping, Optional
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from cachepilot.config.baseline import load_model_baseline
 from cachepilot.gateway.backends import (
@@ -736,6 +736,42 @@ def create_app(
     )
     app = FastAPI(title="CachePilot API", version="0.2.0")
     app.state.gateway_runtime = runtime
+
+    ui_root = Path(__file__).resolve().parents[1] / "ui"
+
+    @app.get("/ui", response_class=HTMLResponse, include_in_schema=False)
+    async def ui_index():
+        return HTMLResponse((ui_root / "index.html").read_text(encoding="utf-8"))
+
+    @app.get("/ui/{asset:path}", include_in_schema=False)
+    async def ui_asset(asset: str):
+        asset_path = (ui_root / asset).resolve()
+        if ui_root not in asset_path.parents or not asset_path.is_file():
+            return Response(status_code=404)
+        media_types = {".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml"}
+        return Response(asset_path.read_bytes(), media_type=media_types.get(asset_path.suffix, "application/octet-stream"))
+
+    @app.get("/ui/dashboard", include_in_schema=False)
+    async def ui_dashboard():
+        admission = runtime.admission.snapshot()
+        traces = runtime.telemetry.traces()
+        completed = [trace for trace in traces if trace.terminal_state]
+        latencies = [trace.total_ms for trace in completed if trace.total_ms is not None]
+        ttfts = [trace.ttft_ms for trace in completed if trace.ttft_ms is not None]
+        return {
+            "model": runtime.settings.model_id,
+            "active_sequences": admission.active_sequences,
+            "active_capacity": runtime.settings.max_active_sequences,
+            "reserved_kv_blocks": admission.reserved_blocks,
+            "kv_capacity_blocks": runtime.settings.total_kv_blocks - runtime.settings.safety_kv_blocks,
+            "requests": len(traces),
+            "completed": len(completed),
+            "success": sum(trace.terminal_state == "SUCCEEDED" for trace in completed),
+            "rejected": sum(trace.terminal_state == "REJECTED" for trace in completed),
+            "avg_latency_ms": round(sum(latencies) / len(latencies), 1) if latencies else 0,
+            "avg_ttft_ms": round(sum(ttfts) / len(ttfts), 1) if ttfts else 0,
+            "traces": [trace.as_dict() for trace in traces[-12:]],
+        }
 
     @app.exception_handler(GatewayError)
     async def gateway_error_handler(
