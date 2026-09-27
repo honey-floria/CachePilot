@@ -743,14 +743,6 @@ def create_app(
     async def ui_index():
         return HTMLResponse((ui_root / "index.html").read_text(encoding="utf-8"))
 
-    @app.get("/ui/{asset:path}", include_in_schema=False)
-    async def ui_asset(asset: str):
-        asset_path = (ui_root / asset).resolve()
-        if ui_root not in asset_path.parents or not asset_path.is_file():
-            return Response(status_code=404)
-        media_types = {".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml"}
-        return Response(asset_path.read_bytes(), media_type=media_types.get(asset_path.suffix, "application/octet-stream"))
-
     @app.get("/ui/dashboard", include_in_schema=False)
     async def ui_dashboard():
         admission = runtime.admission.snapshot()
@@ -772,6 +764,14 @@ def create_app(
             "avg_ttft_ms": round(sum(ttfts) / len(ttfts), 1) if ttfts else 0,
             "traces": [trace.as_dict() for trace in traces[-12:]],
         }
+
+    @app.get("/ui/{asset:path}", include_in_schema=False)
+    async def ui_asset(asset: str):
+        asset_path = (ui_root / asset).resolve()
+        if ui_root not in asset_path.parents or not asset_path.is_file():
+            return Response(status_code=404)
+        media_types = {".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml"}
+        return Response(asset_path.read_bytes(), media_type=media_types.get(asset_path.suffix, "application/octet-stream"))
 
     @app.exception_handler(GatewayError)
     async def gateway_error_handler(
