@@ -58,7 +58,7 @@
 
 ### 2.3 单卡实验与出口
 
-- [ ] **环境脚本/notebook**：输出 GPU、显存、驱动、CUDA、Python、PyTorch、磁盘和模型版本。验收：环境不满足条件时提前失败或选择更小模型，凭据不进入日志。
+- [x] **环境脚本/notebook**：输出 GPU、显存、驱动、CUDA、Python、PyTorch、磁盘和模型版本。验收：环境不满足条件时提前失败或选择更小模型，凭据不进入日志。实现见 `benchmarks/gpu_environment.py` 与 `notebooks/colab_acceptance.ipynb`；单卡、显存、磁盘、Python 和固定 revision 在模型加载前门禁，安装和子进程输出按白名单脱敏。
 - [ ] **渐进压测**：从短 prompt、单并发逐级增加上下文和并发，记录 OOM 与过载保护边界。验收：报告安全上限，不把单次成功当成容量结论。
 - [ ] **必要对照**：Strict vs Adaptive、FCFS vs WFQ、prefix-blind vs prefix-aware；Torch 若真正支持两种 batch，再比较 static vs continuous。验收：同一执行器、模型和硬件内比较，warm-up 后至少重复三次。
 - [ ] **故障验证**：注入取消、断连、执行超时、执行器异常和 OOM，验证唯一终态与资源回收。
