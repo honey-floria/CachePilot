@@ -106,6 +106,15 @@ def request(max_tokens=4):
 
 
 class TorchExecutorTests(unittest.TestCase):
+    def test_count_prompt_tokens_uses_real_tokenizer_boundary(self):
+        executor = TorchExecutor(
+            TorchExecutorConfig("model", device="cpu"),
+            model=FakeModel(),
+            tokenizer=FakeTokenizer(),
+        )
+
+        self.assertEqual(3, executor.count_prompt_tokens(request()))
+
     def test_single_request_passes_mask_positions_and_stops_at_eos(self):
         model = FakeModel()
         executor = TorchExecutor(
