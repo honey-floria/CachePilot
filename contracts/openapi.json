@@ -696,6 +696,9 @@
           },
           "telemetry": {
             "$ref": "#/components/schemas/RequestTelemetry"
+          },
+          "ledger": {
+            "$ref": "#/components/schemas/RequestLedger"
           }
         }
       },
@@ -746,6 +749,70 @@
             "type": "array",
             "items": {"type": "object"}
           }
+        }
+      },
+      "RequestLedger": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "tenant_id",
+          "model",
+          "prompt_tokens",
+          "completion_tokens",
+          "queue_ms",
+          "ttft_ms",
+          "tpot_ms",
+          "prefill_ms",
+          "decode_ms",
+          "total_ms",
+          "timeline",
+          "strategy_version",
+          "logical_kv_blocks",
+          "reservation_peak_blocks",
+          "logical_hit",
+          "logical_hit_source",
+          "physical_hit",
+          "physical_hit_source",
+          "terminal_state",
+          "error_code",
+          "error_stage",
+          "gpu_hour_price",
+          "estimated_gpu_seconds",
+          "estimated_cost",
+          "cost_currency",
+          "cost_basis",
+          "cost_is_estimate"
+        ],
+        "properties": {
+          "request_id": {"$ref": "#/components/schemas/RequestId"},
+          "tenant_id": {"type": "string", "minLength": 1},
+          "model": {"type": "string", "minLength": 1},
+          "prompt_tokens": {"type": ["integer", "null"], "minimum": 0},
+          "completion_tokens": {"type": "integer", "minimum": 0},
+          "queue_ms": {"type": ["number", "null"], "minimum": 0},
+          "ttft_ms": {"type": ["number", "null"], "minimum": 0},
+          "tpot_ms": {"type": ["number", "null"], "minimum": 0},
+          "prefill_ms": {"type": ["number", "null"], "minimum": 0},
+          "decode_ms": {"type": ["number", "null"], "minimum": 0},
+          "total_ms": {"type": ["number", "null"], "minimum": 0},
+          "timeline": {"type": "array", "items": {"type": "object"}},
+          "strategy_version": {"type": "string", "minLength": 1},
+          "logical_kv_blocks": {"type": ["integer", "null"], "minimum": 0},
+          "reservation_peak_blocks": {"type": ["integer", "null"], "minimum": 0},
+          "logical_hit": {"type": "boolean"},
+          "logical_hit_source": {"type": "string", "minLength": 1},
+          "physical_hit": {"type": ["boolean", "null"]},
+          "physical_hit_source": {"type": "string", "minLength": 1},
+          "terminal_state": {"type": "string", "minLength": 1},
+          "error_code": {"type": ["string", "null"], "minLength": 1},
+          "error_stage": {"type": ["string", "null"], "minLength": 1},
+          "gpu_hour_price": {"type": ["number", "null"], "minimum": 0},
+          "estimated_gpu_seconds": {"type": ["number", "null"], "minimum": 0},
+          "estimated_cost": {"type": ["number", "null"], "minimum": 0},
+          "cost_currency": {"type": "string", "minLength": 1},
+          "cost_basis": {"type": "string", "minLength": 1},
+          "cost_is_estimate": {"const": true}
         }
       },
       "CancellationResponse": {

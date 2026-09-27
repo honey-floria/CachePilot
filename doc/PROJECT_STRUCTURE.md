@@ -227,6 +227,7 @@ CachePilot/
 |---|---|
 | `cachepilot/telemetry/__init__.py` | 导出低基数 Prometheus 指标和逐请求 trace 收集器。 |
 | `cachepilot/telemetry/metrics.py` | 线程安全收集请求数、准入、错误、queue/prefill/decode/TTFT/TPOT、逻辑 KV，并渲染不含 request ID、prompt 或 prefix key 的 Prometheus 文本。 |
+| `cachepilot/telemetry/ledger.py` | 记录终态请求的 token、阶段耗时、策略版本、命中来源、reservation 峰值和可重算的估算成本，并导出 JSONL。 |
 
 ## 6. 机器可读配置：`config/`
 

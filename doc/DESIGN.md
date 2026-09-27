@@ -281,6 +281,19 @@ gateway.receive
 请求账本至少记录 request/tenant/model、token 数、queue/prefill/decode/total、逻辑与物理
 命中、reserved/peak blocks、估算 GPU 秒、成本、策略版本和终态。
 
+请求账本使用 `RequestLedgerRecord` 保存终态请求的原始阶段耗时和派生字段。成本口径固定为：
+
+```text
+estimated_gpu_seconds = (prefill_ms + decode_ms) / 1000
+estimated_cost = gpu_hour_price × estimated_gpu_seconds / 3600
+```
+
+`cost_is_estimate` 必须为 `true`，`cost_basis` 必须说明上述 wall-time 估算口径；GPU 小时价格
+未配置时仍记录 `estimated_gpu_seconds`，但 `estimated_cost` 为 `null`。账本的
+`recalculate_estimated_cost` 从原始字段重算成本，不能使用 Prometheus 聚合值或逻辑命中
+推断物理命中。当前 Gateway 未接入 Prefix Index 时，`logical_hit_source` 为
+`not_configured`，物理命中为 `null` 且来源为 `unobservable`。
+
 ## 9. Benchmark
 
 ### 9.1 工作负载

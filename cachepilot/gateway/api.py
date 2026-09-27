@@ -44,7 +44,7 @@ from cachepilot.runtime.state_machine import (
     RequestState,
     TransitionResult,
 )
-from cachepilot.telemetry import TelemetryCollector
+from cachepilot.telemetry import RequestLedger, TelemetryCollector
 
 
 _TENANT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -64,6 +64,9 @@ class GatewaySettings:
     block_size: int = 16
     stream_buffer_tokens: int = 8
     stream_poll_interval_seconds: float = 0.05
+    strategy_version: str = "gateway-v1"
+    gpu_hour_price: Optional[float] = None
+    cost_currency: str = "USD"
     tenant_limits: Mapping[str, TenantAdmissionLimits] = field(
         default_factory=lambda: {
             "team-a": TenantAdmissionLimits(8, 8192, 32),
@@ -136,6 +139,7 @@ class GatewayRuntime:
         registry: Optional[RequestRegistry] = None,
         admission: Optional[StrictAdmissionController] = None,
         telemetry: Optional[TelemetryCollector] = None,
+        ledger: Optional[RequestLedger] = None,
     ) -> None:
         if settings.stream_buffer_tokens < 1:
             raise ValueError("stream_buffer_tokens must be positive")
@@ -149,6 +153,11 @@ class GatewayRuntime:
         )
         self.admission = admission or _build_admission(settings)
         self.telemetry = telemetry or TelemetryCollector()
+        self.ledger = ledger or RequestLedger(
+            strategy_version=settings.strategy_version,
+            gpu_hour_price=settings.gpu_hour_price,
+            cost_currency=settings.cost_currency,
+        )
         self._usage_lock = threading.Lock()
         self._completion_tokens: Dict[str, int] = {}
 
@@ -525,12 +534,14 @@ class GatewayRuntime:
         snapshot = self._tenant_snapshot(request_id, tenant_id)
         prompt_tokens = self.token_counter.count_prompt_tokens(snapshot.request)
         trace = self.telemetry.snapshot(request_id)
+        ledger = self.ledger.snapshot(request_id)
         return {
             "request_id": request_id,
             "state": snapshot.state.value,
             "terminal": snapshot.terminal,
             "usage": _usage(prompt_tokens, self.completion_tokens(request_id)),
             "telemetry": trace.as_dict() if trace is not None else None,
+            "ledger": ledger.as_dict() if ledger is not None else None,
         }
 
     async def cancel(
@@ -691,6 +702,9 @@ class GatewayRuntime:
         )
         if result.applied:
             self.telemetry.finish(request_id, state.value)
+            trace = self.telemetry.snapshot(request_id)
+            if trace is not None:
+                self.ledger.record_trace(trace)
         return result
 
     def _increment_invalid_requests(

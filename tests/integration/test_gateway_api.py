@@ -90,6 +90,11 @@ class GatewayAPITests(unittest.TestCase):
         self.assertEqual("FINISHED", telemetry["terminal_state"])
         self.assertEqual(1, telemetry["logical_kv_blocks"])
         self.assertIsNotNone(telemetry["total_ms"])
+        ledger = query.json()["ledger"]
+        self.assertEqual("gateway-v1", ledger["strategy_version"])
+        self.assertEqual("FINISHED", ledger["terminal_state"])
+        self.assertTrue(ledger["cost_is_estimate"])
+        self.assertEqual("unobservable", ledger["physical_hit_source"])
         hidden = client.get(
             "/v1/requests/normal-1",
             headers={"X-Tenant-ID": "team-b"},
