@@ -75,6 +75,29 @@ class RequestLedgerTests(unittest.TestCase):
         with self.assertRaises(LedgerError):
             ledger.record_trace(trace, physical_hit=True)
 
+    def test_prometheus_cost_totals_are_low_cardinality(self):
+        trace = self._trace()
+        assert trace is not None
+        ledger = RequestLedger(
+            strategy_version="gateway-v1",
+            gpu_hour_price=3.60,
+        )
+        ledger.record_trace(trace)
+
+        rendered = ledger.render_prometheus()
+
+        self.assertIn(
+            'cachepilot_estimated_gpu_seconds_total{model="model-a",'
+            'tenant="team-a"} 0.02',
+            rendered,
+        )
+        self.assertIn(
+            'cachepilot_estimated_cost_total{currency="USD",model="model-a",'
+            'tenant="team-a"}',
+            rendered,
+        )
+        self.assertNotIn("request_id=", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -98,6 +98,7 @@ doc/             设计、TODO、ADR 和验收记录
 - [实施 TODO](doc/TODO.md)：Phase 0–1 的任务、资源和风险。
 - [项目结构](doc/PROJECT_STRUCTURE.md)：目录与文件职责。
 - [实验协议](doc/adr/0005-experiment-protocol.md)：trace、manifest、原始记录和汇总规则。
+- [单机运行手册](doc/RUNBOOK.md)：KV/延迟/worker/成本故障处置与现场导出。
 - [Phase 0 验收](doc/acceptance/0005-phase0-exit.md)：CPU 内核的可执行验收证据。
 
 接口包括 `/v1/chat/completions`、`/v1/requests/{id}`、

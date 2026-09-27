@@ -587,12 +587,18 @@ class GatewayRuntime:
         with self._usage_lock:
             return self._completion_tokens.get(request_id, 0)
 
-    def metrics(self) -> str:
+    def metrics(self, *, executor_healthy: bool = True) -> str:
         snapshot = self.admission.snapshot()
-        return self.telemetry.render_prometheus(
+        telemetry = self.telemetry.render_prometheus(
             active_sequences=snapshot.active_sequences,
             reserved_kv_blocks=snapshot.reserved_blocks,
+            active_sequence_capacity=self.settings.max_active_sequences,
+            kv_capacity_blocks=(
+                self.settings.total_kv_blocks - self.settings.safety_kv_blocks
+            ),
+            executor_healthy=executor_healthy,
         )
+        return telemetry + self.ledger.render_prometheus()
 
     def _advance_to_queued(self, request_id: str) -> None:
         self.registry.transition(
@@ -798,7 +804,7 @@ def create_app(
     @app.get("/metrics")
     async def metrics():
         return PlainTextResponse(
-            runtime.metrics(),
+            runtime.metrics(executor_healthy=await runtime.ready()),
             media_type="text/plain; version=0.0.4",
         )
 

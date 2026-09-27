@@ -252,6 +252,7 @@ cachepilot_admission_total{status, reason}
 cachepilot_errors_total{code, stage}
 cachepilot_prefix_events_total{kind="logical|physical", outcome}
 cachepilot_executor_healthy
+cachepilot_estimated_gpu_seconds_total{tenant, model}
 cachepilot_estimated_cost_total{tenant, model, stage}
 ```
 

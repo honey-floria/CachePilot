@@ -54,7 +54,7 @@
 - [x] **Prefix 核验**：逻辑 key 默认 tenant 隔离；仅在执行器提供可验证信号时记录物理命中。验收：`PrefixScopeKey` 强制包含 tenant 与完整模型版本作用域；实验协议只接受能力矩阵声明且来源匹配的 `physical_hit_signal`，当前执行器缺少信号时汇总明确显示“不可观测”。实现见 `cachepilot/cache/prefix_index.py`、`cachepilot/executor_capabilities.py` 与 `benchmarks/analyze.py`，验证见 `tests/unit/test_prefix_index.py`、`tests/unit/test_executor_capabilities.py` 与 `tests/contract/test_experiment_protocol.py`。
 - [x] **指标与 Trace**：记录请求数、准入原因、TTFT、TPOT、queue/prefill/decode 时间、逻辑 KV 和错误。验收：`TelemetryCollector` 输出低基数 Prometheus 指标，label 不含 request ID、prompt 或 prefix key；`GET /v1/requests/{id}` 返回不含 prompt 内容的逐请求阶段 trace。实现见 `cachepilot/telemetry/metrics.py`、`cachepilot/gateway/api.py` 与 `benchmarks/analyze.py`，验证见 `tests/unit/test_telemetry.py`、`tests/integration/test_gateway_api.py` 与 `tests/contract/test_experiment_protocol.py`。
 - [x] **请求账本**：记录 token、阶段耗时、策略版本、reservation 峰值、逻辑/物理命中来源、终态和估算成本；`GET /v1/requests/{id}` 同时返回 ledger，支持 JSONL 导出。验收：`estimated_cost` 只能由 `prefill_ms + decode_ms`、GPU 小时价格和固定公式重算，并始终标记 `cost_is_estimate=true`；未配置价格时保留 GPU 秒估算且成本为 `null`。实现见 `cachepilot/telemetry/ledger.py`、`cachepilot/gateway/api.py` 与 `contracts/openapi.json`，验证见 `tests/unit/test_ledger.py`。
-- [ ] **运行手册**：覆盖 KV 压力、TTFT/TPOT 回退、worker 故障和成本突增。验收：单机可导出指标快照和实验报告。
+- [x] **运行手册**：覆盖 KV 压力、TTFT/TPOT 回退、worker 故障和成本突增。验收：单机可通过 `make ops-export RUN_DIR=runs/<run_id> OUTPUT_DIR=artifacts/<name>` 导出 `metrics.prom`、快照元数据、协议校验后的 `summary.json` 和 `report.md`。实现见 `benchmarks/export_diagnostics.py` 与 [单机运行手册](RUNBOOK.md)，验证见 `tests/unit/test_export_diagnostics.py`。
 
 ### 2.3 单卡实验与出口
 

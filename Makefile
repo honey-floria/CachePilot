@@ -1,6 +1,9 @@
-.PHONY: install-cpu lint test check phase0-exit serve serve-empty colab-acceptance
+.PHONY: install-cpu lint test check phase0-exit serve serve-empty colab-acceptance ops-export
 
 PYTHON ?= python3
+BASE_URL ?= http://127.0.0.1:8000
+RUN_DIR ?= runs/demo-sim-mixed-001
+OUTPUT_DIR ?= artifacts/diagnostics
 
 install-cpu:
 	$(PYTHON) -m pip install -r requirements/requirements-cpu.txt
@@ -24,3 +27,6 @@ serve-empty:
 
 colab-acceptance:
 	$(PYTHON) benchmarks/colab_acceptance.py
+
+ops-export:
+	$(PYTHON) benchmarks/export_diagnostics.py --base-url $(BASE_URL) --run-dir $(RUN_DIR) --output-dir $(OUTPUT_DIR)

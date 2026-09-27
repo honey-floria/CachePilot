@@ -49,3 +49,15 @@ prefix，以及不同取消机制的指标会返回 `COMPARISON_INVALID`。比�
 
 实验 manifest 的 `gpu_count` 只能为 `0`（CPU 模拟）或 `1`（单卡实测）；分析器会
 拒绝任何多 GPU 记录。
+
+单机运行中可把在线指标快照和已完成 run 一并导出为诊断包：
+
+```bash
+make ops-export \
+  BASE_URL=http://127.0.0.1:8000 \
+  RUN_DIR=runs/<run_id> \
+  OUTPUT_DIR=artifacts/<run_id>-incident
+```
+
+输出包含原始 `metrics.prom`、带 SHA-256 的 `snapshot.json`、重新校验生成的
+`summary.json` 和可读 `report.md`。处置步骤及指标解释见[单机运行手册](../doc/RUNBOOK.md)。

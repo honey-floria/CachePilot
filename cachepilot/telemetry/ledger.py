@@ -247,3 +247,59 @@ class RequestLedger:
                 + "\n"
                 for record in self._records.values()
             )
+
+    def render_prometheus(self) -> str:
+        """按 tenant/model 聚合可重算的估算 GPU 时间与成本。"""
+
+        with self._lock:
+            gpu_seconds: dict[tuple[str, str], float] = {}
+            costs: dict[tuple[str, str, str], float] = {}
+            for record in self._records.values():
+                key = (record.tenant_id, record.model)
+                if record.estimated_gpu_seconds is not None:
+                    gpu_seconds[key] = (
+                        gpu_seconds.get(key, 0.0) + record.estimated_gpu_seconds
+                    )
+                if record.estimated_cost is not None:
+                    cost_key = (
+                        record.cost_currency,
+                        record.tenant_id,
+                        record.model,
+                    )
+                    costs[cost_key] = costs.get(cost_key, 0.0) + record.estimated_cost
+
+        lines = ["# TYPE cachepilot_estimated_gpu_seconds_total counter\n"]
+        for (tenant, model), value in sorted(gpu_seconds.items()):
+            lines.append(
+                _ledger_metric_line(
+                    "cachepilot_estimated_gpu_seconds_total",
+                    value,
+                    {"model": model, "tenant": tenant},
+                )
+            )
+        lines.append("# TYPE cachepilot_estimated_cost_total counter\n")
+        for (currency, tenant, model), value in sorted(costs.items()):
+            lines.append(
+                _ledger_metric_line(
+                    "cachepilot_estimated_cost_total",
+                    value,
+                    {"currency": currency, "model": model, "tenant": tenant},
+                )
+            )
+        return "".join(lines)
+
+
+def _ledger_metric_line(
+    name: str,
+    value: float,
+    labels: Mapping[str, str],
+) -> str:
+    rendered_labels = ",".join(
+        '{0}="{1}"'.format(key, _escape_prometheus_label(labels[key]))
+        for key in sorted(labels)
+    )
+    return "{0}{{{1}}} {2}\n".format(name, rendered_labels, value)
+
+
+def _escape_prometheus_label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')

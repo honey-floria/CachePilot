@@ -267,6 +267,9 @@ class TelemetryCollector:
         *,
         active_sequences: int,
         reserved_kv_blocks: int,
+        active_sequence_capacity: Optional[int] = None,
+        kv_capacity_blocks: Optional[int] = None,
+        executor_healthy: Optional[bool] = None,
     ) -> str:
         with self._lock:
             lines = [
@@ -377,6 +380,36 @@ class TelemetryCollector:
                     ),
                 ]
             )
+            if active_sequence_capacity is not None:
+                lines.extend(
+                    [
+                        "# TYPE cachepilot_active_sequence_capacity gauge\n",
+                        _metric_line(
+                            "cachepilot_active_sequence_capacity",
+                            active_sequence_capacity,
+                        ),
+                    ]
+                )
+            if kv_capacity_blocks is not None:
+                lines.extend(
+                    [
+                        "# TYPE cachepilot_kv_capacity_blocks gauge\n",
+                        _metric_line(
+                            "cachepilot_kv_capacity_blocks",
+                            kv_capacity_blocks,
+                        ),
+                    ]
+                )
+            if executor_healthy is not None:
+                lines.extend(
+                    [
+                        "# TYPE cachepilot_executor_healthy gauge\n",
+                        _metric_line(
+                            "cachepilot_executor_healthy",
+                            1 if executor_healthy else 0,
+                        ),
+                    ]
+                )
             return "".join(lines)
 
     @staticmethod
