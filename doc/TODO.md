@@ -43,10 +43,10 @@
 
 ### 2.1 端到端服务
 
-- [x] **Gateway/API**：FastAPI 实现参数验证、tenant 身份、配额、普通/流式聊天、请求查询/取消和健康检查。验收：标准客户端可解析 SSE；非法请求不占 reservation。实现见 cachepilot/gateway/api.py 与 tests/integration/test_gateway_api.py；当前默认后端是明确标注的确定性 CPU 开发后端，TorchExecutor 已提供单请求适配，VllmExecutor 仍按后续任务接入。改动文件：`cachepilot/gateway/api.py`、`cachepilot/gateway/backends.py`、`cachepilot/gateway/__init__.py`、`tests/integration/test_gateway_api.py`。
+- [x] **Gateway/API**：FastAPI 实现参数验证、tenant 身份、配额、普通/流式聊天、请求查询/取消和健康检查。验收：标准客户端可解析 SSE；非法请求不占 reservation。实现见 cachepilot/gateway/api.py 与 tests/integration/test_gateway_api.py；当前默认后端是明确标注的确定性 CPU 开发后端，TorchExecutor 与 VllmExecutor 均可显式注入。改动文件：`cachepilot/gateway/api.py`、`cachepilot/gateway/backends.py`、`cachepilot/gateway/__init__.py`、`tests/integration/test_gateway_api.py`。
 - [x] **流控与取消**：断连、显式取消和执行超时传播到 Scheduler 与 Executor；SSE 使用有界缓冲和慢客户端超时。验收：慢读、断连和重复取消不会无限缓冲或泄漏请求。改动文件：`cachepilot/runtime/scheduler.py`、`cachepilot/runtime/loop.py`、`cachepilot/executors/sim.py`、`tests/unit/test_runtime_loop.py`、`doc/adr/0002-request-contract.md`。
 - [x] **TorchExecutor**：先实现小模型单请求生成；正确处理 padding、position、mask 和停止条件，并按输入宽度切片输出；当前明确不实现不等长 batching。验收：功能和限制有测试。实现见 `cachepilot/executors/torch_executor.py`，验证见 `tests/unit/test_torch_executor.py`。
-- [ ] **VllmExecutor**：通过锁定版本的稳定接口转发 prompt、stream、abort 和 usage。验收：请求 ID、错误、取消与 token 数可核对；不重复实现 vLLM 内部 batching。
+- [x] **VllmExecutor**：通过锁定版本的稳定接口转发 prompt、stream、abort 和 usage；batching 明确由 vLLM 拥有。验收：请求 ID、错误、取消与 token 数可核对。实现见 `cachepilot/executors/vllm_executor.py`，验证见 `tests/unit/test_vllm_executor.py`，语义见 [ADR-0010](adr/0010-vllm-executor.md)。
 - [ ] **能力矩阵**：列出 Sim/Torch/vLLM 各自拥有的 batch、物理 KV、prefix 和取消能力。验收：不同语义的指标不会混合比较。
 
 ### 2.2 Prefix、观测与成本

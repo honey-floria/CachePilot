@@ -53,6 +53,7 @@ CachePilot/
 │   ├── executors/
 │   │   ├── __init__.py                # 执行器公共接口
 │   │   ├── torch_executor.py           # Transformers 单请求 Torch 执行器
+│   │   ├── vllm_executor.py            # vLLM 流式生成与 abort 适配器
 │   │   └── sim.py                     # 逻辑时钟 continuous-batching 模拟器
 │   ├── gateway/
 │   │   ├── __init__.py                # 网关包入口
@@ -103,11 +104,14 @@ CachePilot/
 │   │   ├── test_scheduler.py          # FCFS/WFQ 顺序、公平与重放测试
 │   │   ├── test_sim_executor.py       # 模拟执行、背压、取消和故障测试
 │   │   ├── test_torch_executor.py     # Torch 单请求生成正确性测试
+│   │   ├── test_vllm_executor.py      # vLLM 异步适配边界测试
 │   │   ├── test_state_machine.py      # 生命周期状态转换与幂等测试
 │   │   └── test_utils.py              # 共享工具类校验与整数运算测试
 │   ├── integration/
 │   │   ├── __init__.py                # 集成测试包入口
-│   │   └── test_imports.py            # 各子包导入冒烟测试
+│   │   ├── test_imports.py            # 各子包导入冒烟测试
+│   │   ├── test_gateway_api.py        # Gateway JSON/SSE 集成测试
+│   │   └── test_vllm_gateway.py       # vLLM 适配器到 SSE 集成测试
 │   ├── contract/
 │   │   ├── __init__.py                # 契约测试包入口
 │   │   ├── test_experiment_protocol.py # 实验协议校验测试
@@ -185,8 +189,9 @@ CachePilot/
 
 | 文件 | 功能 |
 |---|---|
-| `cachepilot/executors/__init__.py` | 导出 SimExecutor 与单请求 TorchExecutor 的稳定接口和异常；TorchExecutor 不实现教学型 batching。 |
+| `cachepilot/executors/__init__.py` | 导出 SimExecutor、单请求 TorchExecutor 和 VllmExecutor 的稳定接口与异常。 |
 | `cachepilot/executors/torch_executor.py` | 使用 Transformers 加载模型并执行单请求生成；集中处理 chat template、padding、attention mask、position IDs、EOS 停止和取消。 |
+| `cachepilot/executors/vllm_executor.py` | 适配锁定版本 vLLM 的 prompt、delta stream、abort、health 和 usage；内部 batching 与物理 KV 完全由 vLLM 拥有。 |
 | `cachepilot/executors/sim.py` | 实现固定 tick 的确定性模拟执行器，覆盖 prefill/decode、逻辑 KV 增长和释放、continuous batching、客户端背压、取消、worker 故障及事件/统计快照。 |
 
 ### 5.5 网关：`cachepilot/gateway/`
@@ -274,9 +279,12 @@ CachePilot/
 | `tests/unit/test_scheduler.py` | 验证 FCFS 优先级与类内顺序、tenant FIFO 子队列、WFQ 权重和虚拟完成标签、最大饥饿提升及固定 trace 确定性重放。 |
 | `tests/unit/test_sim_executor.py` | 验证逻辑时钟推进、prefill/decode、KV block 增长、continuous batch 补位、慢客户端背压、取消、worker 故障和相同输入完全一致重放。 |
 | `tests/unit/test_torch_executor.py` | 使用注入 fake 模型验证单请求 mask、position IDs、padding 输出切片、EOS 停止和取消；不宣称 batching。 |
+| `tests/unit/test_vllm_executor.py` | 使用注入 fake async engine 验证 request ID、delta token usage、错误、health 和 abort 传播；不依赖本机安装 vLLM。 |
 | `tests/unit/test_utils.py` | 验证共享工具类返回已校验值、拒绝 bool、保留调用方异常类型，并正确执行向上整除和毫秒到纳秒换算。 |
 | `tests/integration/__init__.py` | 标记集成冒烟测试包。 |
 | `tests/integration/test_imports.py` | 验证 cache、config、executors、gateway、runtime 和 telemetry 等包都可以成功导入。 |
+| `tests/integration/test_gateway_api.py` | 验证 Gateway 普通/SSE、tenant 隔离、配额、取消、deadline 和 reservation 回收。 |
+| `tests/integration/test_vllm_gateway.py` | 验证 VllmExecutor delta 输出经 Gateway SSE 后 request ID、文本和 usage 保持一致。 |
 | `tests/contract/__init__.py` | 标记可执行契约测试包。 |
 | `tests/contract/test_experiment_protocol.py` | 验证实验 Schema 是合法 JSON、缺失关键元数据会失败，以及分析器可从协议记录生成摘要。 |
 | `tests/contract/test_model_baseline.py` | 验证模型/分词器 revision、许可证、架构、上下文和依赖版本均被固定，并检查 OpenAPI 只接受选定模型。 |
@@ -301,13 +309,14 @@ CachePilot/
 | `doc/adr/0007-sim-executor.md` | 决定 SimExecutor 的逻辑 tick 顺序、prefill/decode 成本、KV 生命周期、输出缓冲、取消/故障和确定性重放语义。 |
 | `doc/adr/0008-runtime-loop-budgets.md` | 决定单 worker 调度循环的完成/回收顺序、完整 KV reservation、实际 KV 账本、逐轮 token 配额和三重硬预算不变量。 |
 | `doc/adr/0009-prefix-index-and-cache-boost.md` | 决定逻辑 prefix 的 tenant/version 隔离、最长 token 前缀查询、物理命中不可观测边界，以及 Prefix-aware WFQ 的三项公平保护。 |
+| `doc/adr/0010-vllm-executor.md` | 决定 vLLM request ID、delta stream、abort、usage 和 batching 所有权边界。 |
 
 ## 13. 部署与 Notebook
 
 | 文件 | 功能 |
 |---|---|
 | `deploy/README.md` | 说明当前阶段暂不提供生产部署配置，待 API 和运行时稳定后再补充单进程服务定义。 |
-| `notebooks/colab_acceptance.ipynb` | Google Colab 综合验收笔记本，覆盖依赖安装、全量测试、普通 JSON、SSE、tenant 隔离、取消、非法请求 reservation 和 TCP HTTP 探活。 |
+| `notebooks/colab_acceptance.ipynb` | Google Colab 综合验收笔记本，覆盖全量测试、Gateway/SSE、TorchExecutor 单请求、VllmExecutor 适配测试及可选的真实 vLLM stream/abort/usage。 |
 
 ## 14. 阅读顺序建议
 

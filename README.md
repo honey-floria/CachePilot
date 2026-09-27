@@ -42,7 +42,7 @@ Gateway ──→ Registry ──→ Admission / Scheduler ──→ Single Exec
 - `Gateway` 负责契约校验、tenant 身份、普通/流式响应、查询与取消；
 - `Registry` 负责唯一终态、幂等事件和一次性资源释放；
 - `Admission/Scheduler` 负责单卡容量保护、FCFS/WFQ 和有限 prefix boost；
-- `SimExecutor` 负责 CPU 确定性验证，`TorchExecutor` 负责 Transformers 单请求真实生成，`VllmExecutor` 负责后续 vLLM 适配；
+- `SimExecutor` 负责 CPU 确定性验证，`TorchExecutor` 负责 Transformers 单请求真实生成，`VllmExecutor` 只适配 vLLM 的流式生成、取消和 usage；
 - 推理引擎拥有物理 KV、GPU kernel 和内部 continuous batching，CachePilot 不重复实现。
 
 ## 完成标准
@@ -72,9 +72,10 @@ make serve
 ```
 
 当前默认后端仍是确定性 CPU 开发后端，只用于 API、SSE 和生命周期验收，不代表真实
-GPU 推理；TorchExecutor 需要安装 Torch/Transformers 并显式注入 Gateway。Google Colab 统一运行
+GPU 推理；TorchExecutor 或 VllmExecutor 需要安装各自锁定依赖并显式注入 Gateway。Google Colab 统一运行
 [`notebooks/colab_acceptance.ipynb`](notebooks/colab_acceptance.ipynb)，该 notebook
-同时覆盖仓库测试、Gateway/SSE、tenant 隔离、取消和真实 TCP HTTP 探活。
+同时覆盖仓库测试、Gateway/SSE、tenant 隔离、取消、真实 TCP HTTP 探活、
+TorchExecutor 单请求以及可选的真实 vLLM stream/abort/usage 验收。
 
 ## 项目结构
 

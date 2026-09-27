@@ -21,6 +21,13 @@ from .torch_executor import (
     TorchExecutorError,
     TorchExecutorUnavailableError,
 )
+from .vllm_executor import (
+    VllmExecutor,
+    VllmExecutorConfig,
+    VllmExecutorError,
+    VllmExecutorUnavailableError,
+    VllmUsage,
+)
 
 __all__ = [
     "LogicalClock",
@@ -40,4 +47,9 @@ __all__ = [
     "TorchExecutorConfig",
     "TorchExecutorError",
     "TorchExecutorUnavailableError",
+    "VllmExecutor",
+    "VllmExecutorConfig",
+    "VllmExecutorError",
+    "VllmExecutorUnavailableError",
+    "VllmUsage",
 ]
