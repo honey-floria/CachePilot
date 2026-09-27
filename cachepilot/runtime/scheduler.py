@@ -200,6 +200,24 @@ class _TenantQueueScheduler:
                 cache_boosted=cache_boosted,
             )
 
+    def cancel(self, request_id: str) -> bool:
+        """从任意 tenant 子队列移除请求；重复取消返回 ``False``。"""
+
+        CommonUtils.require_identifier(request_id, "request_id", SchedulerError)
+        with self._lock:
+            for priority in _PRIORITY_ORDER:
+                tenant_queues = self._queues[priority]
+                for tenant_id, queue in tuple(tenant_queues.items()):
+                    for entry in tuple(queue):
+                        if entry.request.request_id != request_id:
+                            continue
+                        queue.remove(entry)
+                        if not queue:
+                            del tenant_queues[tenant_id]
+                        self._request_ids.remove(request_id)
+                        return True
+        return False
+
     def snapshot(self) -> SchedulerSnapshot:
         """返回按 priority、tenant 稳定排序的队列计数。"""
 

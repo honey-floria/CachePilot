@@ -13,6 +13,7 @@ from cachepilot.runtime.scheduler import (
     FCFSScheduler,
     PrefixAwareWFQScheduler,
 )
+from cachepilot.runtime.deadlines import DeadlinePolicy
 
 
 class RuntimeLoopTests(unittest.TestCase):
@@ -145,6 +146,56 @@ class RuntimeLoopTests(unittest.TestCase):
             loop.submit(self.request("too-large", 8, 1))
 
         self.assertFalse(loop.has_work)
+
+    def test_cancel_pending_removes_scheduler_entry(self):
+        loop = self.make_loop(max_active_sequences=1)
+        loop.submit(self.request("active", 4, 8))
+        loop.submit(self.request("pending", 4, 1, "tenant-b"))
+        loop.step()
+
+        self.assertTrue(loop.cancel("pending"))
+        self.assertFalse(loop.cancel("pending"))
+        self.assertNotIn("pending", loop.snapshot().pending_request_ids)
+        self.assertEqual(("active",), loop.snapshot().active_request_ids)
+
+    def test_deadline_timeout_propagates_to_executor_and_tick_result(self):
+        clock = LogicalClock()
+        executor = SimExecutor(
+            SimExecutorConfig(10, 4, 1, 4, 1, 8, 8),
+            clock,
+        )
+        loop = RuntimeLoop(
+            RuntimeLoopConfig(1, 4, 8),
+            FCFSScheduler(clock),
+            executor,
+            DeadlinePolicy(queue_timeout_ms=100, execution_timeout_ms=1),
+        )
+        loop.submit(
+            RuntimeRequest(
+                "deadline-active",
+                "tenant-a",
+                "interactive",
+                1,
+                8,
+                deadline_ms=1000,
+            )
+        )
+        loop.step()
+        clock.advance(1_000_000)
+        result = loop.step()
+
+        self.assertEqual(("deadline-active",), result.timed_out_request_ids)
+        self.assertEqual(
+            "CANCELLED",
+            executor.request_snapshot("deadline-active").state.value,
+        )
+        cancel_events = [
+            event
+            for event in result.executor.events
+            if event.request_id == "deadline-active"
+            and event.kind.value == "cancelled"
+        ]
+        self.assertEqual((("reason", "timeout"),), cancel_events[-1].details)
 
     def test_same_trace_replays_with_identical_ticks_and_statistics(self):
         def replay():

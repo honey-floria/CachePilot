@@ -415,6 +415,7 @@ class SimExecutor:
     def cancel(
         self,
         request_id: str,  # 要取消的已知请求 ID。
+        reason: str = "explicit",  # 取消来源，用于执行事件追踪。
     ) -> bool:
         """立即把已知非终态请求切换为 ``CANCELLED``。
 
@@ -426,12 +427,18 @@ class SimExecutor:
         CommonUtils.require_identifier(
             request_id, "request_id", SimExecutorError
         )
+        CommonUtils.require_identifier(reason, "reason", SimExecutorError)
         record = self._records.get(request_id)
         if record is None:
             raise SimExecutorError("request is not known: {0}".format(request_id))
         if record.state in TERMINAL_SIM_STATES:
             return False
-        self._terminate(record, SimRequestState.CANCELLED, SimEventKind.CANCELLED)
+        self._terminate(
+            record,
+            SimRequestState.CANCELLED,
+            SimEventKind.CANCELLED,
+            reason=reason,
+        )
         return True
 
     def drain_client(

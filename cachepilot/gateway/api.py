@@ -21,6 +21,7 @@ from cachepilot.gateway.backends import (
     ChatBackend,
     ConservativePromptTokenCounter,
     DeterministicChatBackend,
+    GeneratedText,
     PromptTokenCounter,
 )
 from cachepilot.gateway.contracts import (
@@ -56,6 +57,8 @@ class GatewaySettings:
     max_active_sequences: int = 32
     max_queued_requests: int = 128
     block_size: int = 16
+    stream_buffer_tokens: int = 8
+    stream_poll_interval_seconds: float = 0.05
     tenant_limits: Mapping[str, TenantAdmissionLimits] = field(
         default_factory=lambda: {
             "team-a": TenantAdmissionLimits(8, 8192, 32),
@@ -71,6 +74,14 @@ class PreparedChatRequest:
     request: ValidatedChatRequest
     prompt_tokens: int
     deadline_at_monotonic: float
+
+
+@dataclass(frozen=True)
+class _StreamQueueItem:
+    """有界 SSE 队列中的一个生成结果。"""
+
+    generated: Optional[GeneratedText] = None
+    done: bool = False
 
 
 class GatewayError(Exception):
@@ -120,6 +131,10 @@ class GatewayRuntime:
         registry: Optional[RequestRegistry] = None,
         admission: Optional[StrictAdmissionController] = None,
     ) -> None:
+        if settings.stream_buffer_tokens < 1:
+            raise ValueError("stream_buffer_tokens must be positive")
+        if settings.stream_poll_interval_seconds <= 0:
+            raise ValueError("stream_poll_interval_seconds must be positive")
         self.settings = settings
         self.backend = backend or DeterministicChatBackend()
         self.token_counter = token_counter or ConservativePromptTokenCounter()
@@ -234,8 +249,12 @@ class GatewayRuntime:
 
         pieces = []
         try:
-            async for generated in self.backend.generate(prepared.request):
-                self._raise_if_deadline_exceeded(prepared)
+            iterator = self.backend.generate(prepared.request).__aiter__()
+            while True:
+                try:
+                    generated = await self._next_generated(iterator, prepared)
+                except StopAsyncIteration:
+                    break
                 if self.registry.get(prepared.request.request_id).terminal:
                     break
                 self._record_generated(
@@ -243,7 +262,7 @@ class GatewayRuntime:
                     generated.token_count,
                 )
                 pieces.append(generated.text)
-            self._raise_if_deadline_exceeded(prepared)
+            await self._raise_if_deadline_exceeded(prepared)
             snapshot = self.registry.get(prepared.request.request_id)
             if snapshot.state is RequestState.CANCELLED:
                 raise GatewayError(
@@ -268,6 +287,7 @@ class GatewayRuntime:
             await self.cancel(
                 prepared.request.request_id,
                 prepared.request.tenant_id,
+                reason="disconnect",
             )
             raise
         except Exception as exc:
@@ -293,18 +313,51 @@ class GatewayRuntime:
 
         request = prepared.request
         yield _sse_data(_role_chunk(request))
+        queue: asyncio.Queue[_StreamQueueItem] = asyncio.Queue(
+            maxsize=self.settings.stream_buffer_tokens
+        )
+        producer = asyncio.create_task(
+            self._produce_stream(prepared, queue),
+            name="cachepilot-stream-{0}".format(request.request_id),
+        )
         try:
-            async for generated in self.backend.generate(request):
-                self._raise_if_deadline_exceeded(prepared)
+            while True:
                 if await http_request.is_disconnected():
-                    await self.cancel(request.request_id, request.tenant_id)
+                    await self.cancel(
+                        request.request_id,
+                        request.tenant_id,
+                        reason="disconnect",
+                    )
                     return
+                snapshot = self.registry.get(request.request_id)
+                if snapshot.terminal and snapshot.state is not RequestState.FINISHED:
+                    break
+                if producer.done() and queue.empty():
+                    await producer
+                    break
+                try:
+                    item = await asyncio.wait_for(
+                        queue.get(),
+                        timeout=min(
+                            self._remaining_deadline(prepared),
+                            self.settings.stream_poll_interval_seconds,
+                        ),
+                    )
+                except asyncio.TimeoutError:
+                    await self._raise_if_deadline_exceeded(prepared)
+                    continue
+                if item.done:
+                    await producer
+                    break
+                generated = item.generated
+                if generated is None:
+                    raise RuntimeError("stream queue item has no generated text")
                 if self.registry.get(request.request_id).terminal:
                     break
                 self._record_generated(request.request_id, generated.token_count)
                 yield _sse_data(_content_chunk(request, generated.text))
 
-            self._raise_if_deadline_exceeded(prepared)
+            await self._raise_if_deadline_exceeded(prepared)
             snapshot = self.registry.get(request.request_id)
             if snapshot.state is RequestState.CANCELLED:
                 yield _sse_error(
@@ -312,6 +365,15 @@ class GatewayRuntime:
                         "request_cancelled",
                         "The request was cancelled.",
                         status_code=409,
+                        request_id=request.request_id,
+                    )
+                )
+            elif snapshot.state is RequestState.TIMED_OUT:
+                yield _sse_error(
+                    GatewayError(
+                        "deadline_exceeded",
+                        "The request deadline was exceeded.",
+                        status_code=504,
                         request_id=request.request_id,
                     )
                 )
@@ -338,7 +400,11 @@ class GatewayRuntime:
             yield _sse_error(exc)
             yield "data: [DONE]\n\n"
         except asyncio.CancelledError:
-            await self.cancel(request.request_id, request.tenant_id)
+            await self.cancel(
+                request.request_id,
+                request.tenant_id,
+                reason="disconnect",
+            )
             raise
         except Exception:
             self._transition_terminal(request.request_id, RequestState.FAILED)
@@ -352,7 +418,59 @@ class GatewayRuntime:
             )
             yield "data: [DONE]\n\n"
         finally:
+            if not producer.done():
+                producer.cancel()
+            await asyncio.gather(producer, return_exceptions=True)
             self.admission.release(request.request_id)
+
+    async def _produce_stream(
+        self,
+        prepared: PreparedChatRequest,
+        queue: asyncio.Queue[_StreamQueueItem],
+    ) -> None:
+        """在固定容量队列中生成 token；队列满时自然施加背压。"""
+
+        iterator = self.backend.generate(prepared.request).__aiter__()
+        while True:
+            try:
+                generated = await self._next_generated(iterator, prepared)
+            except StopAsyncIteration:
+                await queue.put(_StreamQueueItem(done=True))
+                return
+            try:
+                await asyncio.wait_for(
+                    queue.put(_StreamQueueItem(generated=generated)),
+                    timeout=self._remaining_deadline(prepared),
+                )
+            except asyncio.TimeoutError as exc:
+                await self._timeout_request(prepared)
+                raise GatewayError(
+                    "deadline_exceeded",
+                    "The request deadline was exceeded.",
+                    status_code=504,
+                    request_id=prepared.request.request_id,
+                ) from exc
+
+    async def _next_generated(self, iterator: Any, prepared: PreparedChatRequest):
+        """以请求 deadline 限制每次执行器拉取，避免 backend 无限阻塞。"""
+
+        await self._raise_if_deadline_exceeded(prepared)
+        try:
+            return await asyncio.wait_for(
+                iterator.__anext__(),
+                timeout=self._remaining_deadline(prepared),
+            )
+        except asyncio.TimeoutError as exc:
+            await self._timeout_request(prepared)
+            raise GatewayError(
+                "deadline_exceeded",
+                "The request deadline was exceeded.",
+                status_code=504,
+                request_id=prepared.request.request_id,
+            ) from exc
+
+    def _remaining_deadline(self, prepared: PreparedChatRequest) -> float:
+        return max(0.001, prepared.deadline_at_monotonic - time.monotonic())
 
     def query(self, request_id: str, tenant_id: str) -> Dict[str, Any]:
         snapshot = self._tenant_snapshot(request_id, tenant_id)
@@ -364,7 +482,13 @@ class GatewayRuntime:
             "usage": _usage(prompt_tokens, self.completion_tokens(request_id)),
         }
 
-    async def cancel(self, request_id: str, tenant_id: str) -> bool:
+    async def cancel(
+        self,
+        request_id: str,
+        tenant_id: str,
+        *,
+        reason: str = "explicit",
+    ) -> bool:
         snapshot = self._tenant_snapshot(request_id, tenant_id)
         if snapshot.state is RequestState.CANCELLED:
             return False
@@ -391,7 +515,7 @@ class GatewayRuntime:
                 status_code=409,
                 request_id=request_id,
             )
-        await self.backend.cancel(request_id)
+        await self.backend.cancel(request_id, reason=reason)
         self.admission.release(request_id)
         return result.applied
 
@@ -455,17 +579,47 @@ class GatewayRuntime:
             return "length"
         return "stop"
 
-    def _raise_if_deadline_exceeded(self, prepared: PreparedChatRequest) -> None:
+    async def _raise_if_deadline_exceeded(
+        self,
+        prepared: PreparedChatRequest,
+    ) -> None:
+        snapshot = self.registry.get(prepared.request.request_id)
+        if snapshot.state is RequestState.TIMED_OUT:
+            raise GatewayError(
+                "deadline_exceeded",
+                "The request deadline was exceeded.",
+                status_code=504,
+                request_id=prepared.request.request_id,
+            )
         if time.monotonic() < prepared.deadline_at_monotonic:
             return
-        request_id = prepared.request.request_id
-        self._transition_terminal(request_id, RequestState.TIMED_OUT)
+        if snapshot.state is RequestState.CANCELLED:
+            raise GatewayError(
+                "request_cancelled",
+                "The request was cancelled.",
+                status_code=409,
+                request_id=prepared.request.request_id,
+            )
+        if snapshot.terminal and snapshot.state is not RequestState.TIMED_OUT:
+            return
+        await self._timeout_request(prepared)
         raise GatewayError(
             "deadline_exceeded",
             "The request deadline was exceeded.",
             status_code=504,
-            request_id=request_id,
+            request_id=prepared.request.request_id,
         )
+
+    async def _timeout_request(self, prepared: PreparedChatRequest) -> bool:
+        """Atomically claim timeout, notify backend, and release admission."""
+
+        request_id = prepared.request.request_id
+        applied = self._transition_terminal(request_id, RequestState.TIMED_OUT)
+        if not applied:
+            return False
+        await self.backend.cancel(request_id, reason="timeout")
+        self.admission.release(request_id)
+        return True
 
     def _tenant_snapshot(self, request_id: str, tenant_id: str) -> RequestSnapshot:
         _validate_lookup_identity(request_id, tenant_id)
@@ -476,15 +630,16 @@ class GatewayRuntime:
             raise _not_found(request_id)
         return snapshot
 
-    def _transition_terminal(self, request_id: str, state: RequestState) -> None:
+    def _transition_terminal(self, request_id: str, state: RequestState) -> bool:
         try:
-            self.registry.transition(
+            result = self.registry.transition(
                 request_id,
                 state,
                 "gateway:{0}:{1}".format(state.value.lower(), request_id),
             )
+            return result.applied
         except InvalidTransitionError:
-            return
+            return False
 
     def _increment_invalid_requests(self) -> None:
         with self._usage_lock:

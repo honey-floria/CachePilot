@@ -20,6 +20,10 @@ from cachepilot.runtime.scheduler import (
     SchedulingPriority,
     SchedulingRequest,
 )
+from cachepilot.runtime.deadlines import (
+    DeadlinePolicy,
+    RequestDeadlineManager,
+)
 from cachepilot.utils import CommonUtils
 
 
@@ -82,6 +86,7 @@ class RuntimeRequest:
     seed: int = 0  # 请求级确定性 seed。
     cancel_after_ns: Optional[int] = None  # 相对提交时间的自动取消延迟。
     client_drain_tokens_per_tick: Optional[int] = None  # 客户端排空速率覆盖值。
+    deadline_ms: Optional[int] = None  # 可选的端到端 deadline，单位毫秒。
 
     def __post_init__(self) -> None:
         """校验调度标识、token 数以及可选模拟参数。"""
@@ -130,6 +135,12 @@ class RuntimeRequest:
                 "client_drain_tokens_per_tick",
                 RuntimeLoopError,
             )
+        if self.deadline_ms is not None:
+            CommonUtils.require_positive_int(
+                self.deadline_ms,
+                "deadline_ms",
+                RuntimeLoopError,
+            )
 
 
 @dataclass(frozen=True)
@@ -153,6 +164,7 @@ class RuntimeTickResult:
     before: RuntimeBudgetSnapshot  # 推进执行器前的账本快照。
     after: RuntimeBudgetSnapshot  # 推进执行器后的实际账本快照。
     executor: SimExecutorSnapshot  # 本轮结束后的完整执行器快照。
+    timed_out_request_ids: Tuple[str, ...] = ()  # 本轮传播到执行器的超时请求。
 
 
 @dataclass(frozen=True)
@@ -185,6 +197,7 @@ class RuntimeLoop:
         config: RuntimeLoopConfig,  # active、batch token 和 KV 硬预算。
         scheduler: _SchedulingQueue,  # FCFS 或 WFQ 调度队列。
         executor: SimExecutor,  # 接收逐请求 token 配额的模拟执行器。
+        deadline_policy: Optional[DeadlinePolicy] = None,
     ) -> None:
         """创建空循环并验证执行器 batch 容量覆盖 active 硬上限。"""
 
@@ -214,6 +227,16 @@ class RuntimeLoop:
         self._peak_kv_blocks = 0
         self._peak_batched_tokens = 0
         self._peak_active_sequences = 0
+        self._deadline_manager = None
+        self._admission_timeout_ids = []
+        if deadline_policy is not None:
+            if not isinstance(deadline_policy, DeadlinePolicy):
+                raise TypeError("deadline_policy must be a DeadlinePolicy")
+            self._deadline_manager = RequestDeadlineManager(
+                deadline_policy,
+                self._expire_request,
+                monotonic_ns=executor.clock,
+            )
 
     @property
     def has_work(self) -> bool:
@@ -245,6 +268,10 @@ class RuntimeLoop:
                     self._config.max_kv_blocks,
                 )
             )
+        if self._deadline_manager is not None and request.deadline_ms is None:
+            raise RuntimeLoopError(
+                "deadline_ms is required when deadline_policy is configured"
+            )
         service_cost = max(1, request.prompt_tokens + request.output_tokens)
         self._scheduler.enqueue(
             SchedulingRequest(
@@ -257,6 +284,17 @@ class RuntimeLoop:
         )
         self._pending[request.request_id] = request
         self._known_request_ids.add(request.request_id)
+        if self._deadline_manager is not None:
+            try:
+                self._deadline_manager.track_queued(
+                    request.request_id,
+                    request.deadline_ms,
+                )
+            except Exception:
+                self._pending.pop(request.request_id, None)
+                self._known_request_ids.remove(request.request_id)
+                self._scheduler.cancel(request.request_id)
+                raise
 
     def step(self) -> RuntimeTickResult:
         """按“回收 → KV 对账 → 接纳 → 三重预算推进”执行一轮。
@@ -273,10 +311,22 @@ class RuntimeLoop:
         6. 更新 KV 与峰值，检查所有硬上限
         """
 
+        timed_out = ()
+        if self._deadline_manager is not None:
+            timed_out = tuple(
+                event.request_id
+                for event in self._deadline_manager.expire_due()
+            )
         opening_snapshot = self._executor.snapshot()
         reclaimed = self._reclaim_completed(opening_snapshot)
         self._sync_kv_ledger(opening_snapshot)
+        self._admission_timeout_ids = []
         admitted = self._admit_waiting()
+        timed_out = timed_out + tuple(
+            request_id
+            for request_id in self._admission_timeout_ids
+            if request_id not in timed_out
+        )
         ready_snapshot = self._executor.snapshot()
         work_allocations = self._allocate_work(ready_snapshot)
         before = self._budget_snapshot(batched_tokens=0)
@@ -300,9 +350,21 @@ class RuntimeLoop:
             before=before,
             after=after,
             executor=executor_snapshot,
+            timed_out_request_ids=timed_out,
         )
         self._tick += 1
         return result
+
+    def cancel(self, request_id: str, reason: str = "explicit") -> bool:
+        """取消排队或执行中的请求，并传播到 Scheduler 与 Executor。"""
+
+        CommonUtils.require_identifier(request_id, "request_id", RuntimeLoopError)
+        CommonUtils.require_identifier(reason, "reason", RuntimeLoopError)
+        return self._cancel_request(
+            request_id,
+            complete_deadline=True,
+            reason=reason,
+        )
 
     def run_until_idle(
         self,
@@ -408,8 +470,67 @@ class RuntimeLoop:
                     ),
                 )
             )
+            if self._deadline_manager is not None:
+                timeout_event = self._deadline_manager.mark_executing(request_id)
+                if timeout_event is not None:
+                    self._admission_timeout_ids.append(request_id)
+                    self._cancel_request(
+                        request_id,
+                        complete_deadline=False,
+                        reason="timeout",
+                    )
+                    continue
             admitted.append(request_id)
         return tuple(admitted)
+
+    def _expire_request(self, request_id: str) -> bool:
+        """作为 Deadline Manager 回调，把超时传播到两个下游组件。"""
+
+        return self._cancel_request(
+            request_id,
+            complete_deadline=False,
+            reason="timeout",
+        )
+
+    def _cancel_request(
+        self,
+        request_id: str,
+        *,
+        complete_deadline: bool,
+        reason: str = "explicit",
+    ) -> bool:
+        changed = False
+        pending = self._pending.pop(request_id, None)
+        if pending is not None:
+            changed = True
+            if self._deferred_request_id == request_id:
+                self._deferred_request_id = None
+            else:
+                changed = self._scheduler.cancel(request_id) or changed
+
+        try:
+            executor_snapshot = self._executor.request_snapshot(request_id)
+        except Exception:
+            executor_snapshot = None
+        if executor_snapshot is not None and executor_snapshot.state not in {
+            SimRequestState.FINISHED,
+            SimRequestState.CANCELLED,
+            SimRequestState.FAILED,
+        }:
+            changed = self._executor.cancel(request_id, reason=reason) or changed
+
+        if request_id in self._active:
+            self._active.pop(request_id, None)
+            self._current_kv_blocks = sum(
+                item.logical_blocks
+                for item in self._executor.snapshot().requests
+            )
+            changed = True
+        if changed and request_id not in self._completed_request_ids:
+            self._completed_request_ids.append(request_id)
+        if complete_deadline and self._deadline_manager is not None:
+            self._deadline_manager.complete(request_id)
+        return changed
 
     def _next_waiting_request_id(self) -> Optional[str]:
         """优先返回上轮容量阻塞请求，否则调用 Scheduler 选择新队首。"""

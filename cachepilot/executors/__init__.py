@@ -15,6 +15,12 @@ from .sim import (
     SimulationLimitError,
     WorkerUnavailableError,
 )
+from .torch_executor import (
+    TorchExecutor,
+    TorchExecutorConfig,
+    TorchExecutorError,
+    TorchExecutorUnavailableError,
+)
 
 __all__ = [
     "LogicalClock",
@@ -30,4 +36,8 @@ __all__ = [
     "SimRequestState",
     "SimulationLimitError",
     "WorkerUnavailableError",
+    "TorchExecutor",
+    "TorchExecutorConfig",
+    "TorchExecutorError",
+    "TorchExecutorUnavailableError",
 ]

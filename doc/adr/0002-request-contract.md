@@ -149,6 +149,8 @@ data: [DONE]
 
 一条流最多产生一个终止结果。发送终止 chunk 或 `event: error` 后不得再发送 token。只要连接仍可写，错误事件之后也发送 `[DONE]`。客户端已经断连时不再尝试网络写入，但内部仍必须完成唯一终态转换和资源回收。
 
+Gateway 使用固定容量的异步队列连接生成器与 SSE 消费者；慢读客户端会让生产者在队列满时阻塞，而不会无限累积 token。生产者和消费者都受请求 deadline 约束，断连、显式取消和超时分别以 `disconnect`、`explicit`、`timeout` 原因传播到执行器。
+
 首版不发送 heartbeat，不支持 `stream_options`，也不把取消表示成正常的 `finish_reason`。
 
 ## 错误响应

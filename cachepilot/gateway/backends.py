@@ -27,8 +27,8 @@ class ChatBackend(Protocol):
     ) -> AsyncIterator[GeneratedText]:
         """按顺序生成文本增量。"""
 
-    async def cancel(self, request_id: str) -> None:
-        """把取消信号传播给执行器。"""
+    async def cancel(self, request_id: str, reason: str = "explicit") -> None:
+        """把带原因的取消信号传播给执行器。"""
 
     async def is_ready(self) -> bool:
         """返回后端当前是否可以接收请求。"""
@@ -64,12 +64,20 @@ class DeterministicChatBackend:
             raise ValueError("token_delay_seconds must be non-negative")
         self._token_delay_seconds = token_delay_seconds
         self._cancelled = set()
+        self._cancel_reasons = {}
 
     async def is_ready(self) -> bool:
         return True
 
-    async def cancel(self, request_id: str) -> None:
+    async def cancel(self, request_id: str, reason: str = "explicit") -> None:
         self._cancelled.add(request_id)
+        self._cancel_reasons[request_id] = reason
+
+    @property
+    def cancel_reasons(self):
+        """返回只读风格的取消原因快照，供验收和观测使用。"""
+
+        return dict(self._cancel_reasons)
 
     async def generate(
         self,

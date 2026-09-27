@@ -209,6 +209,10 @@ class GatewayAPITests(unittest.TestCase):
             ).json()["state"],
         )
         self.assertEqual(0, app.state.gateway_runtime.admission.snapshot().reserved_blocks)
+        self.assertEqual(
+            "timeout",
+            app.state.gateway_runtime.backend.cancel_reasons["deadline-1"],
+        )
 
     def test_cancel_is_idempotent_and_terminal_requests_conflict(self):
         app, client = self.make_client()
@@ -231,6 +235,7 @@ class GatewayAPITests(unittest.TestCase):
         self.assertEqual(200, second.status_code)
         self.assertEqual("CANCELLED", second.json()["state"])
         self.assertEqual(0, runtime.admission.snapshot().reserved_blocks)
+        self.assertEqual("explicit", runtime.backend.cancel_reasons["cancel-1"])
 
         finished = client.post(
             "/v1/chat/completions",

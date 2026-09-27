@@ -52,6 +52,7 @@ CachePilot/
 │   │   └── baseline.py                # 模型和依赖版本基线校验
 │   ├── executors/
 │   │   ├── __init__.py                # 执行器公共接口
+│   │   ├── torch_executor.py           # Transformers 单请求 Torch 执行器
 │   │   └── sim.py                     # 逻辑时钟 continuous-batching 模拟器
 │   ├── gateway/
 │   │   ├── __init__.py                # 网关包入口
@@ -101,6 +102,7 @@ CachePilot/
 │   │   ├── test_runtime_loop.py       # 三重预算、回收顺序和混合长度测试
 │   │   ├── test_scheduler.py          # FCFS/WFQ 顺序、公平与重放测试
 │   │   ├── test_sim_executor.py       # 模拟执行、背压、取消和故障测试
+│   │   ├── test_torch_executor.py     # Torch 单请求生成正确性测试
 │   │   ├── test_state_machine.py      # 生命周期状态转换与幂等测试
 │   │   └── test_utils.py              # 共享工具类校验与整数运算测试
 │   ├── integration/
@@ -130,7 +132,7 @@ CachePilot/
 ├── deploy/
 │   └── README.md                      # 部署配置现状和后续规划
 └── notebooks/
-    └── colab_acceptance.ipynb         # Google Colab 骨架验收流程
+    └── colab_acceptance.ipynb         # Google Colab 综合验收流程
 ```
 
 ## 3. 根目录文件
@@ -183,7 +185,8 @@ CachePilot/
 
 | 文件 | 功能 |
 |---|---|
-| `cachepilot/executors/__init__.py` | 导出 SimExecutor 的逻辑时钟、请求、事件、快照、统计和稳定异常；Torch/vLLM 适配器仍待 Phase 1 实现。 |
+| `cachepilot/executors/__init__.py` | 导出 SimExecutor 与单请求 TorchExecutor 的稳定接口和异常；TorchExecutor 不实现教学型 batching。 |
+| `cachepilot/executors/torch_executor.py` | 使用 Transformers 加载模型并执行单请求生成；集中处理 chat template、padding、attention mask、position IDs、EOS 停止和取消。 |
 | `cachepilot/executors/sim.py` | 实现固定 tick 的确定性模拟执行器，覆盖 prefill/decode、逻辑 KV 增长和释放、continuous batching、客户端背压、取消、worker 故障及事件/统计快照。 |
 
 ### 5.5 网关：`cachepilot/gateway/`
@@ -270,6 +273,7 @@ CachePilot/
 | `tests/unit/test_state_machine.py` | 验证主路径、非法转换、重复事件、事件冲突、任意非终态进入异常终态、终态不可逆和终态后禁止输出 token。 |
 | `tests/unit/test_scheduler.py` | 验证 FCFS 优先级与类内顺序、tenant FIFO 子队列、WFQ 权重和虚拟完成标签、最大饥饿提升及固定 trace 确定性重放。 |
 | `tests/unit/test_sim_executor.py` | 验证逻辑时钟推进、prefill/decode、KV block 增长、continuous batch 补位、慢客户端背压、取消、worker 故障和相同输入完全一致重放。 |
+| `tests/unit/test_torch_executor.py` | 使用注入 fake 模型验证单请求 mask、position IDs、padding 输出切片、EOS 停止和取消；不宣称 batching。 |
 | `tests/unit/test_utils.py` | 验证共享工具类返回已校验值、拒绝 bool、保留调用方异常类型，并正确执行向上整除和毫秒到纳秒换算。 |
 | `tests/integration/__init__.py` | 标记集成冒烟测试包。 |
 | `tests/integration/test_imports.py` | 验证 cache、config、executors、gateway、runtime 和 telemetry 等包都可以成功导入。 |
@@ -303,7 +307,7 @@ CachePilot/
 | 文件 | 功能 |
 |---|---|
 | `deploy/README.md` | 说明当前阶段暂不提供生产部署配置，待 API 和运行时稳定后再补充单进程服务定义。 |
-| `notebooks/colab_acceptance.ipynb` | Google Colab 骨架验收笔记本，按顺序完成工作目录准备、CPU 依赖安装、`make check` 和空服务验收。 |
+| `notebooks/colab_acceptance.ipynb` | Google Colab 综合验收笔记本，覆盖依赖安装、全量测试、普通 JSON、SSE、tenant 隔离、取消、非法请求 reservation 和 TCP HTTP 探活。 |
 
 ## 14. 阅读顺序建议
 
