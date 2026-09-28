@@ -101,6 +101,7 @@ class TorchExecutor:
         self._cancelled: dict[str, str] = {}
         self._cancel_lock = threading.Lock()
         self._generation_lock = threading.Lock()
+        self._tokenizer_lock = threading.Lock()
         self._ready = False
 
         if model is None:
@@ -123,51 +124,52 @@ class TorchExecutor:
 
         if not isinstance(request, ValidatedChatRequest):
             raise TypeError("request must be a ValidatedChatRequest")
-        messages = [
-            {"role": message.role, "content": message.content}
-            for message in request.messages
-        ]
-        apply_template = getattr(self.tokenizer, "apply_chat_template", None)
-        if callable(apply_template):
-            token_ids = apply_template(
-                messages,
-                tokenize=True,
-                add_generation_prompt=True,
-            )
-            if not isinstance(token_ids, str):
-                shape = getattr(token_ids, "shape", None)
-                if shape is not None and len(shape) >= 2:
-                    return int(shape[-1])
-                if isinstance(token_ids, Mapping) and "input_ids" in token_ids:
-                    token_ids = token_ids["input_ids"]
+        with self._tokenizer_lock:
+            messages = [
+                {"role": message.role, "content": message.content}
+                for message in request.messages
+            ]
+            apply_template = getattr(self.tokenizer, "apply_chat_template", None)
+            if callable(apply_template):
+                token_ids = apply_template(
+                    messages,
+                    tokenize=True,
+                    add_generation_prompt=True,
+                )
+                if not isinstance(token_ids, str):
                     shape = getattr(token_ids, "shape", None)
                     if shape is not None and len(shape) >= 2:
                         return int(shape[-1])
-                if (
-                    isinstance(token_ids, (list, tuple))
-                    and token_ids
-                    and isinstance(token_ids[0], (list, tuple))
-                ):
-                    return len(token_ids[0])
-                return len(token_ids)
+                    if isinstance(token_ids, Mapping) and "input_ids" in token_ids:
+                        token_ids = token_ids["input_ids"]
+                        shape = getattr(token_ids, "shape", None)
+                        if shape is not None and len(shape) >= 2:
+                            return int(shape[-1])
+                    if (
+                        isinstance(token_ids, (list, tuple))
+                        and token_ids
+                        and isinstance(token_ids[0], (list, tuple))
+                    ):
+                        return len(token_ids[0])
+                    return len(token_ids)
 
-        prompt = self._chat_prompt(request)
-        encoded = self.tokenizer(prompt, add_special_tokens=False)
-        if not isinstance(encoded, Mapping) or "input_ids" not in encoded:
-            raise TorchExecutorError(
-                "tokenizer output is missing input_ids for prompt counting"
-            )
-        token_ids = encoded["input_ids"]
-        shape = getattr(token_ids, "shape", None)
-        if shape is not None and len(shape) >= 2:
-            return int(shape[-1])
-        if (
-            isinstance(token_ids, (list, tuple))
-            and token_ids
-            and isinstance(token_ids[0], (list, tuple))
-        ):
-            return len(token_ids[0])
-        return len(token_ids)
+            prompt = self._chat_prompt(request)
+            encoded = self.tokenizer(prompt, add_special_tokens=False)
+            if not isinstance(encoded, Mapping) or "input_ids" not in encoded:
+                raise TorchExecutorError(
+                    "tokenizer output is missing input_ids for prompt counting"
+                )
+            token_ids = encoded["input_ids"]
+            shape = getattr(token_ids, "shape", None)
+            if shape is not None and len(shape) >= 2:
+                return int(shape[-1])
+            if (
+                isinstance(token_ids, (list, tuple))
+                and token_ids
+                and isinstance(token_ids[0], (list, tuple))
+            ):
+                return len(token_ids[0])
+            return len(token_ids)
 
     @property
     def cancel_reasons(self) -> dict[str, str]:
@@ -260,23 +262,24 @@ class TorchExecutor:
         return row[input_width:]
 
     def _encode(self, request: ValidatedChatRequest) -> Mapping[str, Any]:
-        prompt = self._chat_prompt(request)
-        try:
-            encoded = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=max(1, self.config.context_limit - request.max_tokens),
-                return_attention_mask=True,
-            )
-        except TypeError:
-            encoded = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                padding=True,
-                return_attention_mask=True,
-            )
+        with self._tokenizer_lock:
+            prompt = self._chat_prompt(request)
+            try:
+                encoded = self.tokenizer(
+                    prompt,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=max(1, self.config.context_limit - request.max_tokens),
+                    return_attention_mask=True,
+                )
+            except TypeError:
+                encoded = self.tokenizer(
+                    prompt,
+                    return_tensors="pt",
+                    padding=True,
+                    return_attention_mask=True,
+                )
         if not isinstance(encoded, Mapping):
             raise TorchExecutorError("tokenizer must return a mapping")
         if "input_ids" not in encoded:
