@@ -18,6 +18,18 @@
   "fairness_jain": 0.8426966292134831,
   "measured_request_count": 4,
   "metrics": {
+    "decode_ms": {
+      "count": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    },
+    "prefill_ms": {
+      "count": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    },
     "queue_ms": {
       "count": 4,
       "p50": 10.0,
@@ -43,6 +55,15 @@
       "p99": 21.0
     }
   },
+  "prefix_observation": {
+    "logical_hits": 0,
+    "logical_misses": 4,
+    "physical_hit_display": "不可观测",
+    "physical_hit_observability": "unobservable",
+    "physical_hit_signal": null,
+    "physical_hits": null,
+    "physical_misses": null
+  },
   "quantile_method": "nearest_rank",
   "rejection_rate": 0.0,
   "repetition_index": 0,
@@ -51,6 +72,8 @@
     {
       "admission_reason": "admitted",
       "arrival_ms": 0,
+      "error_code": null,
+      "error_stage": null,
       "request_id": "mixed-length-0000",
       "reserved_blocks_peak": 2,
       "tenant_id": "tenant-0",
@@ -81,6 +104,8 @@
     {
       "admission_reason": "admitted",
       "arrival_ms": 5,
+      "error_code": null,
+      "error_stage": null,
       "request_id": "mixed-length-0001",
       "reserved_blocks_peak": 6,
       "tenant_id": "tenant-1",
@@ -111,6 +136,8 @@
     {
       "admission_reason": "admitted",
       "arrival_ms": 10,
+      "error_code": null,
+      "error_stage": null,
       "request_id": "mixed-length-0002",
       "reserved_blocks_peak": 16,
       "tenant_id": "tenant-2",
@@ -141,6 +168,8 @@
     {
       "admission_reason": "admitted",
       "arrival_ms": 15,
+      "error_code": null,
+      "error_stage": null,
       "request_id": "mixed-length-0003",
       "reserved_blocks_peak": 3,
       "tenant_id": "tenant-0",
