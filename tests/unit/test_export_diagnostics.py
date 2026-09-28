@@ -44,7 +44,7 @@ cachepilot_estimated_cost_total{currency="USD",model="m",tenant="t"} 0.25
             output_dir = Path(directory) / "bundle"
             paths = export_bundle(
                 base_url="http://127.0.0.1:8000",
-                run_dir=REPOSITORY_ROOT / "runs" / "demo-sim-mixed-001",
+                run_dir=REPOSITORY_ROOT / "tests" / "fixtures" / "diagnostics",
                 output_dir=output_dir,
                 timeout_seconds=2.0,
                 opener=opener,
