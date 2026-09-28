@@ -62,6 +62,7 @@ def run(args: argparse.Namespace) -> int:
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     origin = time.monotonic()
+    profile = getattr(args, "workload_profile", "legacy")
 
     def record_request(item):
         index, prompt_target = item
@@ -73,25 +74,33 @@ def run(args: argparse.Namespace) -> int:
         actual_arrival_ms = (time.monotonic() - origin) * 1000
         request_id = f"{run_id}-{index:04d}"
         prompt = "benchmark " * prompt_target
+        max_tokens = args.max_tokens
+        if profile == "mixed-policy-v2":
+            if index % 4 < 2:
+                prompt += "\nReply with exactly OK and nothing else."
+            else:
+                prompt += "\nList the numbers 1 through 12 separated by commas. No explanation."
+                max_tokens = min(args.max_tokens, 128)
         trace = {
             "trace_version": 1,
             "request_id": request_id,
             "tenant_id": tenant,
             "arrival_ms": scheduled_ms,
             "prompt_tokens": prompt_target,
-            "expected_output_tokens": args.max_tokens,
-            "max_new_tokens": args.max_tokens,
+            "expected_output_tokens": max_tokens,
+            "max_new_tokens": max_tokens,
             "priority": "interactive",
             "seed": args.seed + index,
         }
+        payload = {
+            "model": args.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
         status, body = _post(
             base + "/v1/chat/completions",
-            {
-                "model": args.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": args.max_tokens,
-                "stream": False,
-            },
+            payload,
             {
                 "X-Tenant-ID": tenant,
                 "X-Request-ID": request_id,
@@ -122,7 +131,7 @@ def run(args: argparse.Namespace) -> int:
             "seed": args.seed + index,
             "arrival_ms": trace["arrival_ms"],
             "prompt_tokens": int(actual_prompt_tokens),
-            "expected_output_tokens": args.max_tokens,
+            "expected_output_tokens": max_tokens,
             "completion_tokens": telemetry.get("completion_tokens", 0),
             "terminal_state": terminal_state,
             "queue_ms": telemetry.get("queue_ms"),
@@ -153,18 +162,32 @@ def run(args: argparse.Namespace) -> int:
                 "actual_arrival_ms": actual_arrival_ms,
                 "completed_ms": (time.monotonic() - origin) * 1000,
                 "query": query,
+                "input": payload,
             },
         )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-        results = list(pool.map(record_request, enumerate(args.contexts)))
+        items = list(enumerate(args.contexts))
+        wave_size = getattr(args, "wave_size", 0) or len(items)
+        results = []
+        for start in range(0, len(items), wave_size):
+            results.extend(pool.map(record_request, items[start : start + wave_size]))
     traces, records, observations = map(list, zip(*results))
     normalized_trace = [
         {key: value for key, value in row.items() if key != "request_id"}
         for row in traces
     ]
+    inputs = [row["input"] for row in observations]
+    strategy_versions = {
+        row["query"]["ledger"]["strategy_version"] for row in observations
+    }
+    if len(strategy_versions) != 1:
+        raise RuntimeError("service strategy version changed during the run")
     trace_hash = hashlib.sha256(
-        json.dumps(normalized_trace, sort_keys=True).encode()
+        json.dumps(
+            {"trace": normalized_trace, "inputs": inputs, "profile": profile},
+            sort_keys=True,
+        ).encode()
     ).hexdigest()
     gpu = environment["gpus"][0] if environment["gpus"] else {}
     manifest = {
@@ -214,7 +237,7 @@ def run(args: argparse.Namespace) -> int:
             "context_limit": environment["model"]["context_limit"],
         },
         "strategy": {
-            "version": "1",
+            "version": strategy_versions.pop(),
             "executor": args.executor,
             "admission": args.admission,
             "scheduler": args.scheduler,
@@ -234,6 +257,9 @@ def run(args: argparse.Namespace) -> int:
         json.dumps(
             {
                 "concurrency": args.concurrency,
+                "workload_profile": profile,
+                "wave_size": wave_size,
+                "load_mode": "closed_loop_waves",
                 "requests": observations,
                 "wall_throughput_tokens_per_s": sum(
                     row["completion_tokens"] or 0 for row in records
@@ -274,6 +300,10 @@ def main() -> int:
     parser.add_argument("--tenant", default="team-a")
     parser.add_argument("--tenants", nargs="+")
     parser.add_argument("--concurrency", type=int, default=1)
+    parser.add_argument("--wave-size", type=int, default=0)
+    parser.add_argument(
+        "--workload-profile", choices=("legacy", "mixed-policy-v2"), default="legacy"
+    )
     parser.add_argument("--model", default="Qwen/Qwen2.5-0.5B-Instruct")
     parser.add_argument("--executor", default="TorchExecutor")
     parser.add_argument("--admission", choices=("strict", "adaptive"), required=True)
@@ -290,7 +320,7 @@ def main() -> int:
     parser.add_argument("--timeout-ms", type=int, default=300000)
     parser.add_argument("--arrival-spacing-ms", type=int, default=0)
     args = parser.parse_args()
-    if args.concurrency < 1 or args.arrival_spacing_ms < 0:
+    if args.concurrency < 1 or args.arrival_spacing_ms < 0 or args.wave_size < 0:
         parser.error("concurrency must be positive and arrival spacing non-negative")
     return run(args)
 

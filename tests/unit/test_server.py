@@ -42,6 +42,7 @@ def test_unsupported_bfloat16_is_rejected():
     with patch.dict("sys.modules", {"torch": torch}):
         with pytest.raises(RuntimeError, match="--dtype float16"):
             server.check_cuda(0, "bfloat16")
+    torch.cuda.is_bf16_supported.assert_called_once_with(including_emulation=False)
 
 
 def test_cuda_kernel_failure_is_reported():
@@ -81,7 +82,8 @@ def test_gpu_app_uses_real_executor_and_its_tokenizer():
     runtime = app.state.gateway_runtime
     assert runtime.backend is backend
     assert runtime.token_counter is backend
-    assert runtime.settings.max_active_sequences == 1
+    assert runtime.settings.max_active_sequences == 8
+    assert runtime.settings.execution_slots == 1
     with TestClient(app) as client:
         assert client.get("/readyz").status_code == 200
         response = client.post(

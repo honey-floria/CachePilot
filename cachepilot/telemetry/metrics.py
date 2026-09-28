@@ -208,6 +208,13 @@ class TelemetryCollector:
                     trace.stages.setdefault("admitted", self._clock_ns())
             self._increment(self._admission_counts, (status, reason))
 
+    def record_reservation(self, request_id: str, blocks: int) -> None:
+        with self._lock:
+            trace = self._traces.get(request_id)
+            if trace is not None:
+                trace.logical_kv_blocks = blocks
+                trace.logical_kv_blocks_peak = max(trace.logical_kv_blocks_peak or 0, blocks)
+
     def record_token(self, request_id: str, token_count: int) -> None:
         if type(token_count) is not int or token_count < 1:
             raise ValueError("token_count must be a positive integer")

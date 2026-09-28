@@ -144,15 +144,17 @@ class ColabEvidenceTests(unittest.TestCase):
                 base_url="http://testserver",
                 tenant="team-a",
                 tenants=["team-a", "team-b"],
-                contexts=[8, 16],
+                contexts=[8, 16, 8, 16],
                 concurrency=2,
+                wave_size=2,
+                workload_profile="mixed-policy-v2",
                 admission="strict",
                 scheduler="fcfs",
                 prefix_mode="blind",
                 repetition_index=0,
                 run_id="record-test",
                 seed=7,
-                max_tokens=8,
+                max_tokens=256,
                 timeout_ms=30000,
                 arrival_spacing_ms=0,
                 dtype="float16",
@@ -184,9 +186,18 @@ class ColabEvidenceTests(unittest.TestCase):
                 with self.assertRaises(FileExistsError):
                     formal_gpu_run.run(args)
             summary = json.loads((output / "summary.json").read_text())
-            self.assertEqual(summary["terminal_counts"], {"FINISHED": 2})
+            self.assertEqual(summary["terminal_counts"], {"FINISHED": 4})
             observations = json.loads((output / "observations.json").read_text())
             self.assertGreater(observations["wall_throughput_tokens_per_s"], 0)
+            requests = observations["requests"]
+            self.assertGreaterEqual(
+                min(row["actual_arrival_ms"] for row in requests[2:]),
+                max(row["completed_ms"] for row in requests[:2]),
+            )
+            self.assertEqual(
+                [row["input"]["max_tokens"] for row in requests], [256, 256, 128, 128]
+            )
+            self.assertEqual(observations["load_mode"], "closed_loop_waves")
             self.assertTrue(
                 all(
                     row["query"]["ledger"]["cost_is_estimate"]

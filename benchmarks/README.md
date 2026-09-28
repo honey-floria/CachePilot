@@ -26,6 +26,14 @@ Torch 先完成整段生成再交付 token，TTFT/TPOT 仅能解释为 Gateway �
 `INCONCLUSIVE`，Phase 1 不通过；static/continuous 对照为 N/A。
 未配置 GPU 小时价格时成本为 `null`，并标记为估算。
 
+第二轮默认使用 `mixed-policy-v2`：64 请求、每波 8 个、并发 8、prompt 目标
+1024/512、输出预算 1024/128，并要求模型给出短答；每波完成后再发下一波。
+固定输入/波大小，实际到达时间随上一波完成时间变化，属于闭环负载。
+原始输入、实际时刻和 `query.policy`/`query.adaptive` 保存在 observations 中。
+最终还检查每轮完成数、拒绝率、调度等待、Adaptive 学习/预留缩减和实际 prefix
+dispatch boost；见 `policy-coverage.json`。T4 以原生 BF16 检测选择 float16。
+第一轮 T4 结果及修正原因见[测试历程与问题闭环](../doc/acceptance/phase1-test-history-20260928.md#13-colab-t4-完整验证20260928t193447-d1eadc)。
+
 `benchmarks.colab_phase1` 提供 Sim 和真实 GPU 故障辅助命令，后者必须独占实验服务：
 
 ```bash

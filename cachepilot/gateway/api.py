@@ -8,7 +8,8 @@ import json
 import re
 import threading
 import time
-from dataclasses import dataclass, field
+from collections import OrderedDict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, Mapping, Optional
 
@@ -17,6 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from cachepilot.config.baseline import load_model_baseline
+from cachepilot.cache.prefix_index import PrefixScopeKey, TenantPrefixIndex
 from cachepilot.gateway.backends import (
     ChatBackend,
     ConservativePromptTokenCounter,
@@ -82,6 +84,8 @@ class GatewaySettings:
     admission_strategy: str = "strict"
     scheduler_strategy: str = "fcfs"
     prefix_mode: str = "blind"
+    execution_slots: Optional[int] = None
+    prefix_cache_entries: int = 256
     tenant_limits: Mapping[str, TenantAdmissionLimits] = field(
         default_factory=lambda: {
             "team-a": TenantAdmissionLimits(8, 8192, 32),
@@ -176,6 +180,17 @@ class GatewayRuntime:
         self._usage_lock = threading.Lock()
         self._completion_tokens: Dict[str, int] = {}
         self._peak_reserved_blocks = 0
+        self._execution_slots = settings.execution_slots or settings.max_active_sequences
+        if self._execution_slots < 1 or settings.execution_slots == 0:
+            raise ValueError("execution_slots must be positive")
+        if settings.prefix_cache_entries < 1:
+            raise ValueError("prefix_cache_entries must be positive")
+        self._executing_requests: set[str] = set()
+        self._selection_count = 0
+        self._policy: dict[str, dict[str, Any]] = {}
+        self._prefix_index = TenantPrefixIndex()
+        self._prefix_keys: dict[str, PrefixScopeKey] = {}
+        self._prefix_history: OrderedDict[PrefixScopeKey, None] = OrderedDict()
         if settings.prefix_mode == "aware" and settings.scheduler_strategy != "wfq":
             raise ValueError("prefix_mode='aware' requires scheduler_strategy='wfq'")
         if settings.scheduler_strategy == "fcfs":
@@ -254,6 +269,17 @@ class GatewayRuntime:
                 prompt_tokens,
                 request.max_tokens,
             )
+            self._policy[request.request_id] = {
+                "admission": self.settings.admission_strategy,
+                "scheduler": self.settings.scheduler_strategy,
+                "estimated_output_tokens": decision.estimated_output_tokens,
+                "fallback_to_strict": decision.fallback_to_strict,
+                "logical_hit_tokens": 0,
+                "logical_hit_source": "not_configured",
+                "cache_boosted": False,
+                "scheduler_wait_ms": None,
+                "selection_order": None,
+            }
             self.telemetry.record_admission(
                 request.request_id,
                 decision.status.value,
@@ -292,12 +318,15 @@ class GatewayRuntime:
                 RequestState.ROUTED,
                 "gateway:routed:{0}".format(request.request_id),
             )
-            self.registry.transition(
-                request.request_id,
-                RequestState.EXECUTING,
-                "gateway:executing:{0}".format(request.request_id),
-            )
-            self.telemetry.mark_stage(request.request_id, "executing")
+            key_factory = getattr(self.token_counter, "prefix_key", None)
+            key = key_factory(request) if callable(key_factory) else None
+            if key is not None:
+                self._prefix_keys[request.request_id] = key
+                hit = self._prefix_index.lookup(key)
+                self._policy[request.request_id].update(
+                    logical_hit_tokens=hit.matched_tokens,
+                    logical_hit_source="tenant_prefix_index",
+                )
         except GatewayError:
             raise
         except Exception as exc:
@@ -317,15 +346,19 @@ class GatewayRuntime:
 
         with self._usage_lock:
             self._completion_tokens[request.request_id] = 0
+        self._schedule_events[request.request_id] = asyncio.Event()
         self._scheduler.enqueue(
             SchedulingRequest(
                 request_id=request.request_id,
                 tenant_id=request.tenant_id,
                 priority=SchedulingPriority(request.priority),
-                service_cost=request.max_tokens,
+                service_cost=prompt_tokens + request.max_tokens,
+                cache_hit_tokens=(
+                    self._policy[request.request_id]["logical_hit_tokens"]
+                    if self.settings.prefix_mode == "aware" else 0
+                ),
             )
         )
-        self._schedule_events[request.request_id] = asyncio.Event()
         return PreparedChatRequest(
             request=request,
             prompt_tokens=prompt_tokens,
@@ -336,9 +369,9 @@ class GatewayRuntime:
         """收集生成增量并返回普通 Chat Completions 响应。"""
 
         pieces = []
-        await self._wait_for_turn(prepared)
-        await self._raise_if_deadline_exceeded(prepared)
         try:
+            await self._wait_for_turn(prepared)
+            await self._raise_if_deadline_exceeded(prepared)
             iterator = self.backend.generate(prepared.request).__aiter__()
             while True:
                 try:
@@ -386,6 +419,8 @@ class GatewayRuntime:
                 exc.code,
                 "request",
             )
+            if not self.registry.get(prepared.request.request_id).terminal:
+                self._transition_terminal(prepared.request.request_id, RequestState.FAILED)
             raise
         except asyncio.CancelledError:
             await self.cancel(
@@ -413,6 +448,7 @@ class GatewayRuntime:
             ) from exc
         finally:
             self.admission.release(prepared.request.request_id)
+            self._release_execution(prepared.request.request_id)
 
     async def stream(
         self,
@@ -422,17 +458,18 @@ class GatewayRuntime:
         """输出标准 SSE data 事件，并在结束或错误后发送 `[DONE]`。"""
 
         request = prepared.request
-        await self._wait_for_turn(prepared)
-        await self._raise_if_deadline_exceeded(prepared)
-        yield _sse_data(_role_chunk(request))
         queue: asyncio.Queue[_StreamQueueItem] = asyncio.Queue(
             maxsize=self.settings.stream_buffer_tokens
         )
-        producer = asyncio.create_task(
-            self._produce_stream(prepared, queue),
-            name="cachepilot-stream-{0}".format(request.request_id),
-        )
+        producer = None
         try:
+            await self._wait_for_turn(prepared)
+            await self._raise_if_deadline_exceeded(prepared)
+            yield _sse_data(_role_chunk(request))
+            producer = asyncio.create_task(
+                self._produce_stream(prepared, queue),
+                name="cachepilot-stream-{0}".format(request.request_id),
+            )
             while True:
                 if await http_request.is_disconnected():
                     await self.cancel(
@@ -518,6 +555,8 @@ class GatewayRuntime:
             yield "data: [DONE]\n\n"
         except GatewayError as exc:
             self.telemetry.record_error(request.request_id, exc.code, "request")
+            if not self.registry.get(request.request_id).terminal:
+                self._transition_terminal(request.request_id, RequestState.FAILED)
             yield _sse_error(exc)
             yield "data: [DONE]\n\n"
         except asyncio.CancelledError:
@@ -545,10 +584,12 @@ class GatewayRuntime:
             )
             yield "data: [DONE]\n\n"
         finally:
-            if not producer.done():
-                producer.cancel()
-            await asyncio.gather(producer, return_exceptions=True)
+            if producer is not None:
+                if not producer.done():
+                    producer.cancel()
+                await asyncio.gather(producer, return_exceptions=True)
             self.admission.release(request.request_id)
+            self._release_execution(request.request_id)
 
     async def _produce_stream(
         self,
@@ -611,6 +652,11 @@ class GatewayRuntime:
             "usage": _usage(prompt_tokens, self.completion_tokens(request_id)),
             "telemetry": trace.as_dict() if trace is not None else None,
             "ledger": ledger.as_dict() if ledger is not None else None,
+            "policy": dict(self._policy.get(request_id, {})),
+            "adaptive": (
+                asdict(self.admission.adaptive_snapshot())
+                if isinstance(self.admission, AdaptiveAdmissionController) else None
+            ),
         }
 
     async def cancel(
@@ -664,17 +710,41 @@ class GatewayRuntime:
         request_id = prepared.request.request_id
         event = self._schedule_events[request_id]
         while not event.is_set():
+            if self.registry.get(request_id).terminal:
+                return
             if time.monotonic() >= prepared.deadline_at_monotonic:
                 await self._timeout_request(prepared)
                 return
             with self._schedule_lock:
-                decision = self._scheduler.select()
+                decision = (
+                    self._scheduler.select()
+                    if len(self._executing_requests) < self._execution_slots else None
+                )
                 if decision is not None:
                     selected = self._schedule_events.get(decision.request.request_id)
                     if selected is not None:
+                        selected_id = decision.request.request_id
+                        self._executing_requests.add(selected_id)
+                        self._selection_count += 1
+                        self._policy[selected_id].update(
+                            scheduler_wait_ms=decision.queue_wait_ns / 1e6,
+                            selection_order=self._selection_count,
+                            cache_boosted=decision.cache_boosted,
+                        )
                         selected.set()
             if not event.is_set():
                 await asyncio.sleep(0.001)
+        if not self.registry.get(request_id).terminal:
+            self.registry.transition(
+                request_id, RequestState.EXECUTING, f"gateway:executing:{request_id}",
+            )
+            self.telemetry.mark_stage(request_id, "executing")
+
+    def _release_execution(self, request_id: str) -> None:
+        with self._schedule_lock:
+            self._scheduler.cancel(request_id)
+            self._executing_requests.discard(request_id)
+            self._schedule_events.pop(request_id, None)
 
     def _reserve_generated(self, request_id: str, generated_tokens: int) -> None:
         reserve = getattr(self.admission, "reserve_generated_tokens", None)
@@ -688,6 +758,13 @@ class GatewayRuntime:
                 status_code=429,
                 request_id=request_id,
             )
+        trace = self.telemetry.snapshot(request_id)
+        previous_blocks = trace.logical_kv_blocks or 0
+        if decision.reserved_blocks > previous_blocks:
+            self.registry.grow_reservation(
+                request_id, decision.reserved_blocks - previous_blocks,
+            )
+            self.telemetry.record_reservation(request_id, decision.reserved_blocks)
 
     def _complete_admission(self, request_id: str, output_tokens: int) -> None:
         complete = getattr(self.admission, "complete", None)
@@ -785,6 +862,7 @@ class GatewayRuntime:
         if not applied:
             return False
         await self.backend.cancel(request_id, reason="timeout")
+        self._scheduler.cancel(request_id)
         self.admission.release(request_id)
         return True
 
@@ -815,9 +893,22 @@ class GatewayRuntime:
         )
         if result.applied:
             self.telemetry.finish(request_id, state.value)
+            key = self._prefix_keys.pop(request_id, None)
+            if state is RequestState.FINISHED and key is not None:
+                self._prefix_index.record(key)
+                self._prefix_history[key] = None
+                self._prefix_history.move_to_end(key)
+                if len(self._prefix_history) > self.settings.prefix_cache_entries:
+                    oldest, _ = self._prefix_history.popitem(last=False)
+                    self._prefix_index.discard(oldest)
             trace = self.telemetry.snapshot(request_id)
             if trace is not None:
-                self.ledger.record_trace(trace)
+                policy = self._policy.get(request_id, {})
+                self.ledger.record_trace(
+                    trace,
+                    logical_hit=policy.get("logical_hit_tokens", 0) > 0,
+                    logical_hit_source=policy.get("logical_hit_source", "not_configured"),
+                )
         return result
 
     def _increment_invalid_requests(

@@ -26,8 +26,10 @@ def check_cuda(device_index: int, dtype: str) -> str:
     if not 0 <= device_index < torch.cuda.device_count():
         raise RuntimeError(f"GPU 索引 {device_index} 不存在，请检查 CUDA_VISIBLE_DEVICES。")
     torch.cuda.set_device(device_index)
-    if dtype == "bfloat16" and not torch.cuda.is_bf16_supported():
-        raise RuntimeError("此 GPU 不支持 bfloat16，请使用 --dtype float16。")
+    if dtype == "bfloat16" and not torch.cuda.is_bf16_supported(
+        including_emulation=False
+    ):
+        raise RuntimeError("此 GPU 不支持原生 bfloat16，请使用 --dtype float16。")
     device = f"cuda:{device_index}"
     try:
         probe = torch.ones(1, device=device, dtype=getattr(torch, dtype))
@@ -77,6 +79,8 @@ def create_gpu_app(
             model_id=baseline.model_id,
             context_limit=baseline.service_context_limit,
             max_active_sequences=8,
+            execution_slots=1,
+            strategy_version="gateway-policy-v2",
             admission_strategy=admission,
             scheduler_strategy=scheduler,
             prefix_mode=prefix_mode,

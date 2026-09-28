@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Iterable, Mapping, Optional, Sequence
 
 from cachepilot.executor_capabilities import TORCH_EXECUTOR_CAPABILITIES
+from cachepilot.cache.prefix_index import PrefixScopeKey
 from cachepilot.gateway.backends import GeneratedText
 from cachepilot.gateway.contracts import ValidatedChatRequest
 
@@ -122,6 +123,25 @@ class TorchExecutor:
     def count_prompt_tokens(self, request: ValidatedChatRequest) -> int:
         """使用同一 tokenizer/chat template 计算 Gateway 准入 token 数。"""
 
+        return len(self.prompt_token_ids(request))
+
+    def prefix_key(self, request: ValidatedChatRequest) -> Optional[PrefixScopeKey]:
+        """返回带固定版本作用域的逻辑 token key，不声明物理 KV 命中。"""
+
+        if not self.config.model_revision or not self.config.tokenizer_revision:
+            return None
+        return PrefixScopeKey.create(
+            tenant_id=request.tenant_id,
+            model_id=self.config.model_id,
+            model_revision=self.config.model_revision,
+            tokenizer_revision=self.config.tokenizer_revision,
+            quantization_config="none",
+            tokenized_prefix=self.prompt_token_ids(request),
+        )
+
+    def prompt_token_ids(self, request: ValidatedChatRequest) -> tuple[int, ...]:
+        """在同一 tokenizer 锁内取得准入和逻辑 prefix 共用的 token 序列。"""
+
         if not isinstance(request, ValidatedChatRequest):
             raise TypeError("request must be a ValidatedChatRequest")
         with self._tokenizer_lock:
@@ -137,21 +157,7 @@ class TorchExecutor:
                     add_generation_prompt=True,
                 )
                 if not isinstance(token_ids, str):
-                    shape = getattr(token_ids, "shape", None)
-                    if shape is not None and len(shape) >= 2:
-                        return int(shape[-1])
-                    if isinstance(token_ids, Mapping) and "input_ids" in token_ids:
-                        token_ids = token_ids["input_ids"]
-                        shape = getattr(token_ids, "shape", None)
-                        if shape is not None and len(shape) >= 2:
-                            return int(shape[-1])
-                    if (
-                        isinstance(token_ids, (list, tuple))
-                        and token_ids
-                        and isinstance(token_ids[0], (list, tuple))
-                    ):
-                        return len(token_ids[0])
-                    return len(token_ids)
+                    return self._flat_token_ids(token_ids)
 
             prompt = self._chat_prompt(request)
             encoded = self.tokenizer(prompt, add_special_tokens=False)
@@ -159,17 +165,19 @@ class TorchExecutor:
                 raise TorchExecutorError(
                     "tokenizer output is missing input_ids for prompt counting"
                 )
-            token_ids = encoded["input_ids"]
-            shape = getattr(token_ids, "shape", None)
-            if shape is not None and len(shape) >= 2:
-                return int(shape[-1])
-            if (
-                isinstance(token_ids, (list, tuple))
-                and token_ids
-                and isinstance(token_ids[0], (list, tuple))
-            ):
-                return len(token_ids[0])
-            return len(token_ids)
+            return self._flat_token_ids(encoded)
+
+    @staticmethod
+    def _flat_token_ids(token_ids: Any) -> tuple[int, ...]:
+        if isinstance(token_ids, Mapping):
+            token_ids = token_ids["input_ids"]
+        shape = getattr(token_ids, "shape", ())
+        if len(shape) >= 2 or (
+            isinstance(token_ids, (list, tuple)) and token_ids
+            and isinstance(token_ids[0], (list, tuple))
+        ):
+            token_ids = token_ids[0]
+        return tuple(int(token) for token in token_ids)
 
     @property
     def cancel_reasons(self) -> dict[str, str]:

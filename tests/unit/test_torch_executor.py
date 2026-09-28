@@ -109,6 +109,19 @@ def request(max_tokens=4):
 
 
 class TorchExecutorTests(unittest.TestCase):
+    def test_prefix_key_uses_locked_token_ids_and_version_scope(self):
+        executor = TorchExecutor(
+            TorchExecutorConfig("model", device="cpu", model_revision="a" * 40,
+                                tokenizer_revision="b" * 40),
+            model=FakeModel(), tokenizer=FakeTokenizer(),
+        )
+        key = executor.prefix_key(request())
+        self.assertEqual(key.tokenized_prefix, (0, 1, 2))
+        self.assertEqual(key.tenant_id, "team-a")
+        self.assertEqual(key.model_revision, "a" * 40)
+        self.assertEqual(key.tokenizer_revision, "b" * 40)
+        self.assertEqual(executor.count_prompt_tokens(request()), len(key.tokenized_prefix))
+
     def test_oom_remains_classifiable_without_exposing_exception_details(self):
         from benchmarks.progressive_load import classify_result
         from cachepilot.gateway.api import _executor_error_code

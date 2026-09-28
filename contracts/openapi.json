@@ -699,6 +699,17 @@
           },
           "ledger": {
             "$ref": "#/components/schemas/RequestLedger"
+          },
+          "terminal": {
+            "type": "boolean"
+          },
+          "policy": {
+            "type": "object",
+            "description": "Per-request admission estimate, logical prefix tokens, scheduler wait and selection evidence. Contains no prompt or token IDs."
+          },
+          "adaptive": {
+            "type": ["object", "null"],
+            "description": "Adaptive learning counters and bucket sample counts at query time; null for Strict."
           }
         }
       },
