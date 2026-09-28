@@ -203,6 +203,8 @@ class TorchExecutor:
         except TorchExecutorError:
             raise
         except Exception as exc:
+            if isinstance(exc, MemoryError) or "out of memory" in str(exc).lower():
+                raise TorchExecutorError("Torch generation ran out of memory") from exc
             raise TorchExecutorError("Torch generation failed") from exc
 
         eos_ids = self._eos_token_ids()

@@ -109,6 +109,24 @@ def request(max_tokens=4):
 
 
 class TorchExecutorTests(unittest.TestCase):
+    def test_oom_remains_classifiable_without_exposing_exception_details(self):
+        from benchmarks.progressive_load import classify_result
+        from cachepilot.gateway.api import _executor_error_code
+
+        executor = TorchExecutor(
+            TorchExecutorConfig("model", device="cpu"),
+            model=FakeModel(), tokenizer=FakeTokenizer(),
+        )
+        with patch.object(executor, "_generate_token_ids", side_effect=RuntimeError(
+            "CUDA out of memory: private diagnostic details"
+        )):
+            with self.assertRaises(RuntimeError) as raised:
+                asyncio.run(self._collect(executor.generate(request())))
+        self.assertNotIn("private diagnostic", str(raised.exception))
+        code = _executor_error_code(raised.exception)
+        self.assertEqual(code, "executor_oom")
+        self.assertEqual(classify_result(500, code), "oom")
+
     def test_cancelled_request_waiting_for_model_does_not_generate(self):
         executor = TorchExecutor(
             TorchExecutorConfig("model", device="cpu"),

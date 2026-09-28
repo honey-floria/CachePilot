@@ -33,7 +33,9 @@ from benchmarks.gpu_environment import (  # noqa: E402
 
 DEFAULT_CONTEXTS = (32, 128, 512, 2048, 4096, 8192)
 DEFAULT_CONCURRENCIES = (1, 2, 4, 8)
-OOM_MARKERS = ("out of memory", "cuda out of memory", "cublas_status_alloc_failed")
+OOM_MARKERS = (
+    "out of memory", "cuda out of memory", "cublas_status_alloc_failed", "executor_oom",
+)
 TRACE_FIELDS = (
     "prompt_tokens", "completion_tokens", "terminal_state", "queue_ms",
     "ttft_ms", "total_ms", "error_code", "admission_reason", "reserved_blocks_peak",

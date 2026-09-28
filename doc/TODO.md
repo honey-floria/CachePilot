@@ -58,6 +58,10 @@
 
 ### 2.3 单卡实验与出口
 
+Colab 完整验证入口：[colab_phase1_matrix.ipynb](../notebooks/colab_phase1_matrix.ipynb)。
+顺序执行后下载证据 ZIP，以 `conclusions.json` / `report.md` 和原始 runs 作为下面
+四项的验收依据；脚本或 notebook 已实现不等于 GPU 验收已通过，不自动勾选。
+
 - [x] **环境脚本/notebook**：输出 GPU、显存、驱动、CUDA、Python、PyTorch、磁盘和模型版本。验收：环境不满足条件时提前失败或选择更小模型，凭据不进入日志。实现见 `benchmarks/gpu_environment.py` 与 `notebooks/colab_acceptance.ipynb`；单卡、显存、磁盘、Python 和固定 revision 在模型加载前门禁，安装和子进程输出按白名单脱敏。
 - [ ] **渐进压测**：已实现 `benchmarks/progressive_load.py`，可从短 prompt、单并发逐级增加上下文和并发，重复每个矩阵点并记录 OOM 与过载保护边界；报告只把全量重复成功点标为安全上限。待在真实单 GPU 环境生成 `runs/<run_id>/progressive_report.json` 和 `progressive_requests.jsonl` 后完成验收。
 - [ ] **必要对照**：Strict vs Adaptive、FCFS vs WFQ、prefix-blind vs prefix-aware；Torch 若真正支持两种 batch，再比较 static vs continuous。已加入 `benchmarks/strategy_matrix.py` 对同执行器、模型、硬件、代码版本和 trace 的门禁，并强制每个策略 warm-up 后至少三次测量；待 GPU 服务器生成原始 runs 后完成验收。

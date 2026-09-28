@@ -184,6 +184,8 @@
         "physical_hit_signal": {"type": ["string", "null"], "minLength": 1},
         "reserved_blocks_peak": {"type": ["number", "null"], "minimum": 0},
         "estimated_gpu_seconds": {"type": ["number", "null"], "minimum": 0},
+        "estimated_cost": {"type": ["number", "null"], "minimum": 0},
+        "cost_is_estimate": {"const": true},
         "admission_reason": {"type": ["string", "null"], "minLength": 1},
         "timeline": {
           "type": "array",

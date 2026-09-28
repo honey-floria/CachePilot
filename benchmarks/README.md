@@ -1,5 +1,44 @@
 # 基准测试
 
+## Colab Phase 1 完整流程
+
+打开 [`colab_phase1_matrix.ipynb`](../notebooks/colab_phase1_matrix.ipynb)，选择单 GPU，
+将包含本次代码与 `.git` 的仓库放到 Drive，修改首个单元的 `SOURCE` 后顺序执行。
+此 notebook 覆盖 TODO 2.3 的四项验证；`colab_acceptance.ipynb` 保留基础接入用途。
+
+流程为：独立 Python 3.13.15 环境 → Phase 0/API 回归 → 四策略渐进扫描 →
+每策略三轮（重启、warm-up、正式测量）→ 矩阵校验 → 五项真实 GPU 故障 →
+Sim 原始证据 → Phase 1 子门禁 → 四项结论与 ZIP 归档。
+锁定 Python/依赖不可下载时直接判环境阻塞，不能绕过版本约束。
+
+- `progressive/*`：每点三次的安全点、保护/OOM 观测与原始请求；不外推容量。
+- `matrix/*`：12 个 warm-up + 12 个 measured run，各含协议四件套与
+  `observations.json`（实际发送/结束时间、窗口吞吐、完整 query/ledger）。
+- `chaos-control.json`：原有确定性故障检查；`chaos-gpu.json`：真实 HTTP、模型与
+  CUDA allocator 的受控故障、唯一终态、资源回收和恢复请求。
+- `sim/*`：实际 SimExecutor 事件及协议数据，明确标注 simulated。
+- `comparison-rows.json`、`conclusions.json`、`report.md`：逐次结果和最终结论。
+- `source.json`、`source-snapshot/`、依赖/环境日志与 `checksums.json`：复现依据。
+
+CUDA OOM 通过 model.forward 内超容量分配触发，不伪装成自然负载容量边界。
+Torch 先完成整段生成再交付 token，TTFT/TPOT 仅能解释为 Gateway 交付指标；
+物理 prefix 命中仍不可观测。prefix-aware 没有逻辑命中证据时标记
+`INCONCLUSIVE`，Phase 1 不通过；static/continuous 对照为 N/A。
+未配置 GPU 小时价格时成本为 `null`，并标记为估算。
+
+`benchmarks.colab_phase1` 提供 Sim 和真实 GPU 故障辅助命令，后者必须独占实验服务：
+
+```bash
+python -m benchmarks.colab_phase1 sim --reference runs/<measured-run> --output runs/<sim-run>
+python -m benchmarks.colab_phase1 gpu-chaos --dtype float16 --output runs/<new-chaos-report>.json
+```
+
+故障辅助命令检查 Torch 生成线程锁以确认后台生成结束，因此与本仓库
+TorchExecutor 实现绑定。显存检查使用 allocated bytes 和 16 MiB 容差，不要求
+NVIDIA 驱动显示的进程占用归零；模型权重应继续驻留以完成恢复请求。
+
+## 实验协议
+
 实验协议已由 [ADR-0005](../doc/adr/0005-experiment-protocol.md) 固定，机器可读
 schema 位于 `config/experiment.schema.json`。一次实验必须保留
 `manifest.json`、`trace.jsonl`、`requests.jsonl` 和分析器生成的 `summary.json`。

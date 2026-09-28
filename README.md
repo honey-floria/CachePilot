@@ -92,10 +92,15 @@ make serve
 ```
 
 `main.py` 使用真实 TorchExecutor；`cachepilot.gateway.api` 的工厂默认仍保留
-确定性 CPU 后端供测试使用。vLLM 需要另行安装和注入。Google Colab 统一运行
+确定性 CPU 后端供测试使用。vLLM 需要另行安装和注入。基础接入验收运行
 [`notebooks/colab_acceptance.ipynb`](notebooks/colab_acceptance.ipynb)，该 notebook
 同时覆盖仓库测试、Gateway/SSE、tenant 隔离、取消、真实 TCP HTTP 探活、
 TorchExecutor 单请求以及可选的真实 vLLM stream/abort/usage 验收。
+
+要得到 TODO 2.3 的**渐进压测、必要对照、故障验证与 Phase 1 出口结论**，运行
+[`notebooks/colab_phase1_matrix.ipynb`](notebooks/colab_phase1_matrix.ipynb)。它提供独立
+Python 环境、四策略重复测量、真实 CUDA 故障验证、Sim 原始证据和 Drive 归档。
+最后查看 `report.md` 与 `conclusions.json`，不是仅凭 `MATRIX_VALID` 勾选 TODO。
 
 ## 项目结构
 

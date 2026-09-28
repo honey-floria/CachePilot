@@ -42,6 +42,8 @@ REQUIRED_REQUEST = (
     "reserved_blocks_peak", "estimated_gpu_seconds",
 )
 OPTIONAL_REQUEST = (
+    "estimated_cost",
+    "cost_is_estimate",
     "admission_reason",
     "timeline",
     "physical_hit_signal",
@@ -263,6 +265,10 @@ def validate_request(
     for field in OPTIONAL_FLOAT_FIELDS:
         if field in record:
             _number_or_null(record[field], f"{where}.{field}")
+    if "estimated_cost" in record:
+        _number_or_null(record["estimated_cost"], f"{where}.estimated_cost")
+    if "cost_is_estimate" in record and record["cost_is_estimate"] is not True:
+        raise ProtocolError(f"{where}.cost_is_estimate: expected true")
     if not isinstance(record["logical_hit"], bool) or (
         record["physical_hit"] is not True
         and record["physical_hit"] is not False
