@@ -1,0 +1,433 @@
+{
+  "artifact_type": "cachepilot_progressive_load_report",
+  "schema_version": 1,
+  "created_at_utc": "2026-09-28T17:52:50.574867+00:00",
+  "host": {
+    "platform": "Linux-5.15.0-194-generic-x86_64-with-glibc2.35",
+    "python": "3.13.15"
+  },
+  "service": {
+    "base_url": "http://127.0.0.1:8000",
+    "ready_status": 200
+  },
+  "environment": {
+    "platform": {
+      "system": "Linux",
+      "machine": "x86_64",
+      "python": "3.13.15"
+    },
+    "python": {
+      "version": "3.13.15",
+      "implementation": "CPython"
+    },
+    "gpu_count": 1,
+    "gpus": [
+      {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4080 SUPER",
+        "memory_total_bytes": 17171480576,
+        "memory_free_bytes": 14949548032,
+        "driver": "580.178.04"
+      }
+    ],
+    "cuda": "13.0",
+    "cuda_available": true,
+    "pytorch": "2.11.0+cu130",
+    "disk": {
+      "path": "/userhome/cs5/u3680889/CachePilot",
+      "free_bytes": 94808047616,
+      "total_bytes": 107374182400
+    },
+    "model": {
+      "id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "tokenizer_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "tokenizer_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "context_limit": 8192
+    }
+  },
+  "configuration": {
+    "contexts": [
+      32,
+      128,
+      512,
+      2048,
+      4096,
+      8192
+    ],
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "repetitions": 3,
+    "max_tokens": 16,
+    "warmup": true
+  },
+  "steps": 72,
+  "matrix_points": [
+    {
+      "context_tokens_target": 32,
+      "observed_prompt_tokens": 62,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 3
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 32,
+      "observed_prompt_tokens": 62,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 6
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 32,
+      "observed_prompt_tokens": 62,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 12
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 32,
+      "observed_prompt_tokens": 62,
+      "concurrency": 8,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 24
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 128,
+      "observed_prompt_tokens": 158,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 3
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 128,
+      "observed_prompt_tokens": 158,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 6
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 128,
+      "observed_prompt_tokens": 158,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 12
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 128,
+      "observed_prompt_tokens": 158,
+      "concurrency": 8,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 24
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 512,
+      "observed_prompt_tokens": 542,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 3
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 512,
+      "observed_prompt_tokens": 542,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 6
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 512,
+      "observed_prompt_tokens": 542,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 12
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 512,
+      "observed_prompt_tokens": 542,
+      "concurrency": 8,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 24
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 2048,
+      "observed_prompt_tokens": 2078,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 3
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 2048,
+      "observed_prompt_tokens": 2078,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 6
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 2048,
+      "observed_prompt_tokens": 2078,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 9,
+        "overload_protected": 3
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 2048,
+      "observed_prompt_tokens": 2078,
+      "concurrency": 8,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "overload_protected": 15,
+        "success": 9
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 4096,
+      "observed_prompt_tokens": 4126,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 3
+      },
+      "safe": true
+    },
+    {
+      "context_tokens_target": 4096,
+      "observed_prompt_tokens": 4126,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 3,
+        "overload_protected": 3
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 4096,
+      "observed_prompt_tokens": 4126,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "success": 3,
+        "overload_protected": 9
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 4096,
+      "observed_prompt_tokens": 4126,
+      "concurrency": 8,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "overload_protected": 21,
+        "success": 3
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 8192,
+      "observed_prompt_tokens": 8222,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "overload_protected": 3
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 8192,
+      "observed_prompt_tokens": 8222,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "overload_protected": 6
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 8192,
+      "observed_prompt_tokens": 8222,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "overload_protected": 12
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 8192,
+      "observed_prompt_tokens": 8222,
+      "concurrency": 8,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "overload_protected": 24
+      },
+      "safe": false
+    }
+  ],
+  "safety": {
+    "definition": "safe means every repeated request at a matrix point finished successfully with no protection, OOM, timeout, or failure",
+    "safe_context_tokens_observed": 4126,
+    "safe_concurrency_at_safe_context": 1,
+    "first_overload_protection_point": {
+      "context_tokens_target": 2048,
+      "observed_prompt_tokens": 2078,
+      "concurrency": 4,
+      "repetition": 1,
+      "request_count": 4,
+      "counts": {
+        "success": 3,
+        "overload_protected": 1
+      },
+      "safe": false,
+      "results": [
+        {
+          "request_id": "progressive-4a043beef09645bba72a8bee83410e1d",
+          "index": 0,
+          "requested_prompt_tokens": 2048,
+          "status": 200,
+          "classification": "success",
+          "wall_ms": 300.035,
+          "trace": {
+            "prompt_tokens": 2078,
+            "completion_tokens": 16,
+            "terminal_state": "FINISHED",
+            "queue_ms": 0.078483,
+            "ttft_ms": 288.02583999999996,
+            "total_ms": 296.11973800000004,
+            "error_code": null,
+            "admission_reason": "admitted"
+          }
+        },
+        {
+          "request_id": "progressive-bc8521e70dd2437aa89c92de780bfce9",
+          "index": 1,
+          "requested_prompt_tokens": 2048,
+          "status": 200,
+          "classification": "success",
+          "wall_ms": 490.278,
+          "trace": {
+            "prompt_tokens": 2078,
+            "completion_tokens": 16,
+            "terminal_state": "FINISHED",
+            "queue_ms": 0.092542,
+            "ttft_ms": 461.510567,
+            "total_ms": 478.122667,
+            "error_code": null,
+            "admission_reason": "admitted"
+          }
+        },
+        {
+          "request_id": "progressive-46cba560d67b4782904e52d31c103d0b",
+          "index": 2,
+          "requested_prompt_tokens": 2048,
+          "status": 429,
+          "classification": "overload_protected",
+          "wall_ms": 41.426,
+          "trace": {
+            "prompt_tokens": 2078,
+            "completion_tokens": 0,
+            "terminal_state": "REJECTED",
+            "queue_ms": 0.08371400000000001,
+            "ttft_ms": null,
+            "total_ms": 6.489886,
+            "error_code": "kv_capacity",
+            "admission_reason": "kv_capacity"
+          }
+        },
+        {
+          "request_id": "progressive-0e7091cb925a41bea0f48276d50e73cf",
+          "index": 3,
+          "requested_prompt_tokens": 2048,
+          "status": 200,
+          "classification": "success",
+          "wall_ms": 783.114,
+          "trace": {
+            "prompt_tokens": 2078,
+            "completion_tokens": 16,
+            "terminal_state": "FINISHED",
+            "queue_ms": 0.06640399999999999,
+            "ttft_ms": 746.452315,
+            "total_ms": 754.654603,
+            "error_code": null,
+            "admission_reason": "admitted"
+          }
+        }
+      ]
+    },
+    "first_oom_point": null,
+    "capacity_conclusion": "bounded repeated matrix only; extrapolation beyond tested points is invalid"
+  }
+}
