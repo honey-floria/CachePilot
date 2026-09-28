@@ -113,7 +113,7 @@ def _prompt(target_tokens: int) -> str:
 
 
 def _one_request(base_url: str, context_tokens: int, index: int, max_tokens: int,
-                 timeout_s: float) -> dict[str, Any]:
+                 timeout_s: float, tenant_id: str) -> dict[str, Any]:
     request_id = f"progressive-{uuid.uuid4().hex}"
     payload = {
         "model": "Qwen/Qwen2.5-0.5B-Instruct",
@@ -127,7 +127,7 @@ def _one_request(base_url: str, context_tokens: int, index: int, max_tokens: int
             _url(base_url, "/v1/chat/completions"), method="POST", payload=payload,
             timeout_s=timeout_s,
             extra_headers={
-                "X-Tenant-ID": "progressive-load",
+                "X-Tenant-ID": tenant_id,
                 "X-Request-ID": request_id,
                 "X-Deadline-Ms": str(int(timeout_s * 1000)),
             },
@@ -142,7 +142,7 @@ def _one_request(base_url: str, context_tokens: int, index: int, max_tokens: int
             trace_status, trace, _ = _http_json(
                 _url(base_url, f"/v1/requests/{request_id}"),
                 timeout_s=timeout_s,
-                extra_headers={"X-Tenant-ID": "progressive-load"},
+                extra_headers={"X-Tenant-ID": tenant_id},
             )
             if trace_status == 200:
                 telemetry = trace.get("telemetry", trace)
@@ -266,7 +266,8 @@ def run(args: argparse.Namespace) -> int:
             break
         if args.warmup:
             _one_request(
-                args.base_url, context_tokens, -1, args.max_tokens, args.timeout
+                args.base_url, context_tokens, -1, args.max_tokens, args.timeout,
+                args.tenant_id,
             )
         for concurrency in args.concurrencies:
             if oom_seen:
@@ -283,6 +284,7 @@ def run(args: argparse.Namespace) -> int:
                             index,
                             args.max_tokens,
                             args.timeout,
+                            args.tenant_id,
                         )
                         for index in range(concurrency)
                     ]
@@ -366,6 +368,10 @@ def main() -> int:
         "--root", type=Path, default=Path(__file__).resolve().parents[1]
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
+    parser.add_argument(
+        "--tenant-id", default="team-a",
+        help="authorized tenant configured by the Gateway",
+    )
     parser.add_argument(
         "--output-dir", type=Path, default=Path("runs/progressive-load")
     )
