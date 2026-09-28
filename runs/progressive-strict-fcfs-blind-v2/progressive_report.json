@@ -1,7 +1,7 @@
 {
   "artifact_type": "cachepilot_progressive_load_report",
   "schema_version": 1,
-  "created_at_utc": "2026-09-28T16:51:05.828291+00:00",
+  "created_at_utc": "2026-09-28T17:12:53.916575+00:00",
   "host": {
     "platform": "Linux-5.15.0-194-generic-x86_64-with-glibc2.35",
     "python": "3.13.15"
@@ -35,7 +35,7 @@
     "pytorch": "2.11.0+cu130",
     "disk": {
       "path": "/userhome/cs5/u3680889/CachePilot",
-      "free_bytes": 94809096192,
+      "free_bytes": 94808047616,
       "total_bytes": 107374182400
     },
     "model": {
@@ -82,10 +82,9 @@
       "completed_repetitions": 3,
       "required_repetitions": 3,
       "counts": {
-        "success": 3,
-        "failed": 3
+        "success": 6
       },
-      "safe": false
+      "safe": true
     },
     {
       "context_tokens_target": 32,
@@ -94,10 +93,9 @@
       "completed_repetitions": 3,
       "required_repetitions": 3,
       "counts": {
-        "success": 8,
-        "failed": 4
+        "success": 12
       },
-      "safe": false
+      "safe": true
     },
     {
       "context_tokens_target": 128,
@@ -117,10 +115,9 @@
       "completed_repetitions": 3,
       "required_repetitions": 3,
       "counts": {
-        "failed": 3,
-        "success": 3
+        "success": 6
       },
-      "safe": false
+      "safe": true
     },
     {
       "context_tokens_target": 128,
@@ -129,10 +126,9 @@
       "completed_repetitions": 3,
       "required_repetitions": 3,
       "counts": {
-        "success": 6,
-        "failed": 6
+        "success": 12
       },
-      "safe": false
+      "safe": true
     },
     {
       "context_tokens_target": 512,
@@ -152,10 +148,9 @@
       "completed_repetitions": 3,
       "required_repetitions": 3,
       "counts": {
-        "success": 3,
-        "failed": 3
+        "success": 6
       },
-      "safe": false
+      "safe": true
     },
     {
       "context_tokens_target": 512,
@@ -164,10 +159,9 @@
       "completed_repetitions": 3,
       "required_repetitions": 3,
       "counts": {
-        "success": 6,
-        "failed": 6
+        "success": 12
       },
-      "safe": false
+      "safe": true
     },
     {
       "context_tokens_target": 2048,
@@ -187,10 +181,9 @@
       "completed_repetitions": 3,
       "required_repetitions": 3,
       "counts": {
-        "failed": 3,
-        "success": 3
+        "success": 6
       },
-      "safe": false
+      "safe": true
     },
     {
       "context_tokens_target": 2048,
@@ -199,8 +192,8 @@
       "completed_repetitions": 3,
       "required_repetitions": 3,
       "counts": {
-        "failed": 9,
-        "success": 3
+        "success": 9,
+        "overload_protected": 3
       },
       "safe": false
     }
@@ -208,8 +201,93 @@
   "safety": {
     "definition": "safe means every repeated request at a matrix point finished successfully with no protection, OOM, timeout, or failure",
     "safe_context_tokens_observed": 2078,
-    "safe_concurrency_at_safe_context": 1,
-    "first_overload_protection_point": null,
+    "safe_concurrency_at_safe_context": 2,
+    "first_overload_protection_point": {
+      "context_tokens_target": 2048,
+      "observed_prompt_tokens": 2078,
+      "concurrency": 4,
+      "repetition": 1,
+      "request_count": 4,
+      "counts": {
+        "success": 3,
+        "overload_protected": 1
+      },
+      "safe": false,
+      "results": [
+        {
+          "request_id": "progressive-22efaa671e804d70acecfd6f15783620",
+          "index": 0,
+          "requested_prompt_tokens": 2048,
+          "status": 200,
+          "classification": "success",
+          "wall_ms": 485.702,
+          "trace": {
+            "prompt_tokens": 2078,
+            "completion_tokens": 16,
+            "terminal_state": "FINISHED",
+            "queue_ms": 0.042418,
+            "ttft_ms": 464.536131,
+            "total_ms": 477.225289,
+            "error_code": null,
+            "admission_reason": "admitted"
+          }
+        },
+        {
+          "request_id": "progressive-db8d161342ae45ef851315bd23a7bb0c",
+          "index": 1,
+          "requested_prompt_tokens": 2048,
+          "status": 200,
+          "classification": "success",
+          "wall_ms": 199.457,
+          "trace": {
+            "prompt_tokens": 2078,
+            "completion_tokens": 16,
+            "terminal_state": "FINISHED",
+            "queue_ms": 0.051276999999999996,
+            "ttft_ms": 189.757835,
+            "total_ms": 196.002364,
+            "error_code": null,
+            "admission_reason": "admitted"
+          }
+        },
+        {
+          "request_id": "progressive-b61d7dcaa27e4045a5d880b17a361251",
+          "index": 2,
+          "requested_prompt_tokens": 2048,
+          "status": 200,
+          "classification": "success",
+          "wall_ms": 771.505,
+          "trace": {
+            "prompt_tokens": 2078,
+            "completion_tokens": 16,
+            "terminal_state": "FINISHED",
+            "queue_ms": 0.032289000000000005,
+            "ttft_ms": 745.492525,
+            "total_ms": 751.055526,
+            "error_code": null,
+            "admission_reason": "admitted"
+          }
+        },
+        {
+          "request_id": "progressive-d788b0c22eaa47e18f4c2c94810a9e28",
+          "index": 3,
+          "requested_prompt_tokens": 2048,
+          "status": 429,
+          "classification": "overload_protected",
+          "wall_ms": 26.862,
+          "trace": {
+            "prompt_tokens": 2078,
+            "completion_tokens": 0,
+            "terminal_state": "REJECTED",
+            "queue_ms": 0.078513,
+            "ttft_ms": null,
+            "total_ms": 3.845519,
+            "error_code": "kv_capacity",
+            "admission_reason": "kv_capacity"
+          }
+        }
+      ]
+    },
     "first_oom_point": null,
     "capacity_conclusion": "bounded repeated matrix only; extrapolation beyond tested points is invalid"
   }
