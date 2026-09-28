@@ -37,6 +37,18 @@ from cachepilot.runtime.admission import (
     StrictAdmissionController,
     TenantAdmissionLimits,
 )
+from cachepilot.runtime.adaptive_admission import (
+    AdaptiveAdmissionConfig,
+    AdaptiveAdmissionController,
+)
+from cachepilot.runtime.scheduler import (
+    CacheBoostConfig,
+    FCFSScheduler,
+    PrefixAwareWFQScheduler,
+    SchedulingPriority,
+    SchedulingRequest,
+    WFQScheduler,
+)
 from cachepilot.runtime.kv_planner import KVModelSpec, KVPlanner
 from cachepilot.runtime.registry import RequestRegistry, RequestSnapshot
 from cachepilot.runtime.state_machine import (
@@ -67,6 +79,9 @@ class GatewaySettings:
     strategy_version: str = "gateway-v1"
     gpu_hour_price: Optional[float] = None
     cost_currency: str = "USD"
+    admission_strategy: str = "strict"
+    scheduler_strategy: str = "fcfs"
+    prefix_mode: str = "blind"
     tenant_limits: Mapping[str, TenantAdmissionLimits] = field(
         default_factory=lambda: {
             "team-a": TenantAdmissionLimits(8, 8192, 32),
@@ -161,6 +176,22 @@ class GatewayRuntime:
         self._usage_lock = threading.Lock()
         self._completion_tokens: Dict[str, int] = {}
         self._peak_reserved_blocks = 0
+        if settings.prefix_mode == "aware" and settings.scheduler_strategy != "wfq":
+            raise ValueError("prefix_mode='aware' requires scheduler_strategy='wfq'")
+        if settings.scheduler_strategy == "fcfs":
+            self._scheduler = FCFSScheduler()
+        elif settings.scheduler_strategy == "wfq":
+            if settings.prefix_mode == "aware":
+                self._scheduler = PrefixAwareWFQScheduler(
+                    {}, 30_000_000_000,
+                    CacheBoostConfig(3, 10_000_000_000),
+                )
+            else:
+                self._scheduler = WFQScheduler({}, 30_000_000_000)
+        else:
+            raise ValueError("scheduler_strategy must be 'fcfs' or 'wfq'")
+        self._schedule_events: dict[str, asyncio.Event] = {}
+        self._schedule_lock = threading.Lock()
 
     def prepare(
         self,
@@ -286,6 +317,15 @@ class GatewayRuntime:
 
         with self._usage_lock:
             self._completion_tokens[request.request_id] = 0
+        self._scheduler.enqueue(
+            SchedulingRequest(
+                request_id=request.request_id,
+                tenant_id=request.tenant_id,
+                priority=SchedulingPriority(request.priority),
+                service_cost=request.max_tokens,
+            )
+        )
+        self._schedule_events[request.request_id] = asyncio.Event()
         return PreparedChatRequest(
             request=request,
             prompt_tokens=prompt_tokens,
@@ -296,6 +336,8 @@ class GatewayRuntime:
         """收集生成增量并返回普通 Chat Completions 响应。"""
 
         pieces = []
+        await self._wait_for_turn(prepared)
+        await self._raise_if_deadline_exceeded(prepared)
         try:
             iterator = self.backend.generate(prepared.request).__aiter__()
             while True:
@@ -305,6 +347,11 @@ class GatewayRuntime:
                     break
                 if self.registry.get(prepared.request.request_id).terminal:
                     break
+                self._reserve_generated(
+                    prepared.request.request_id,
+                    self.completion_tokens(prepared.request.request_id)
+                    + generated.token_count,
+                )
                 self._record_generated(
                     prepared.request.request_id,
                     generated.token_count,
@@ -322,6 +369,10 @@ class GatewayRuntime:
             self._transition_terminal(
                 prepared.request.request_id,
                 RequestState.FINISHED,
+            )
+            self._complete_admission(
+                prepared.request.request_id,
+                self.completion_tokens(prepared.request.request_id),
             )
             return _completion_response(
                 prepared,
@@ -344,9 +395,10 @@ class GatewayRuntime:
             )
             raise
         except Exception as exc:
+            error_code = _executor_error_code(exc)
             self.telemetry.record_error(
                 prepared.request.request_id,
-                "executor_failed",
+                error_code,
                 "executor",
             )
             self._transition_terminal(
@@ -354,7 +406,7 @@ class GatewayRuntime:
                 RequestState.FAILED,
             )
             raise GatewayError(
-                "executor_failed",
+                error_code,
                 "The generation backend failed.",
                 status_code=500,
                 request_id=prepared.request.request_id,
@@ -370,6 +422,8 @@ class GatewayRuntime:
         """输出标准 SSE data 事件，并在结束或错误后发送 `[DONE]`。"""
 
         request = prepared.request
+        await self._wait_for_turn(prepared)
+        await self._raise_if_deadline_exceeded(prepared)
         yield _sse_data(_role_chunk(request))
         queue: asyncio.Queue[_StreamQueueItem] = asyncio.Queue(
             maxsize=self.settings.stream_buffer_tokens
@@ -412,6 +466,10 @@ class GatewayRuntime:
                     raise RuntimeError("stream queue item has no generated text")
                 if self.registry.get(request.request_id).terminal:
                     break
+                self._reserve_generated(
+                    request.request_id,
+                    self.completion_tokens(request.request_id) + generated.token_count,
+                )
                 self._record_generated(request.request_id, generated.token_count)
                 yield _sse_data(_content_chunk(request, generated.text))
 
@@ -446,6 +504,10 @@ class GatewayRuntime:
                 )
             else:
                 self._transition_terminal(request.request_id, RequestState.FINISHED)
+                self._complete_admission(
+                    request.request_id,
+                    self.completion_tokens(request.request_id),
+                )
                 yield _sse_data(
                     _terminal_chunk(
                         prepared,
@@ -465,16 +527,17 @@ class GatewayRuntime:
                 reason="disconnect",
             )
             raise
-        except Exception:
+        except Exception as exc:
+            error_code = _executor_error_code(exc)
             self.telemetry.record_error(
                 request.request_id,
-                "executor_failed",
+                error_code,
                 "executor",
             )
             self._transition_terminal(request.request_id, RequestState.FAILED)
             yield _sse_error(
                 GatewayError(
-                    "executor_failed",
+                    error_code,
                     "The generation backend failed.",
                     status_code=500,
                     request_id=request.request_id,
@@ -583,6 +646,10 @@ class GatewayRuntime:
                 request_id=request_id,
             )
         await self.backend.cancel(request_id, reason=reason)
+        self._scheduler.cancel(request_id)
+        event = self._schedule_events.get(request_id)
+        if event is not None:
+            event.set()
         self.admission.release(request_id)
         return result.applied
 
@@ -592,6 +659,40 @@ class GatewayRuntime:
     def completion_tokens(self, request_id: str) -> int:
         with self._usage_lock:
             return self._completion_tokens.get(request_id, 0)
+
+    async def _wait_for_turn(self, prepared: PreparedChatRequest) -> None:
+        request_id = prepared.request.request_id
+        event = self._schedule_events[request_id]
+        while not event.is_set():
+            if time.monotonic() >= prepared.deadline_at_monotonic:
+                await self._timeout_request(prepared)
+                return
+            with self._schedule_lock:
+                decision = self._scheduler.select()
+                if decision is not None:
+                    selected = self._schedule_events.get(decision.request.request_id)
+                    if selected is not None:
+                        selected.set()
+            if not event.is_set():
+                await asyncio.sleep(0.001)
+
+    def _reserve_generated(self, request_id: str, generated_tokens: int) -> None:
+        reserve = getattr(self.admission, "reserve_generated_tokens", None)
+        if reserve is None:
+            return
+        decision = reserve(request_id, generated_tokens)
+        if decision.status.value != "CONTINUE":
+            raise GatewayError(
+                "admission_capacity_exceeded",
+                "The request exceeded its adaptive reservation.",
+                status_code=429,
+                request_id=request_id,
+            )
+
+    def _complete_admission(self, request_id: str, output_tokens: int) -> None:
+        complete = getattr(self.admission, "complete", None)
+        if complete is not None:
+            complete(request_id, output_tokens)
 
     def metrics(self, *, executor_healthy: bool = True) -> str:
         snapshot = self.admission.snapshot()
@@ -725,6 +826,15 @@ class GatewayRuntime:
         stage: str = "validation",
     ) -> None:
         self.telemetry.record_invalid_request(code, stage)
+
+
+def _executor_error_code(error: BaseException) -> str:
+    """Return a stable public error code for backend failures."""
+
+    text = str(error).lower()
+    if isinstance(error, MemoryError) or "out of memory" in text:
+        return "executor_oom"
+    return "executor_failed"
 
 
 def create_app(
@@ -874,15 +984,27 @@ def _build_admission(settings: GatewaySettings) -> StrictAdmissionController:
             context_limit=settings.context_limit,
         )
     )
-    return StrictAdmissionController(
-        planner,
-        StrictAdmissionConfig(
+    strict_config = StrictAdmissionConfig(
             total_blocks=settings.total_kv_blocks,
             safety_blocks=settings.safety_kv_blocks,
             max_active_sequences=settings.max_active_sequences,
             max_queued_requests=settings.max_queued_requests,
             tenant_limits=settings.tenant_limits,
-        ),
+        )
+    if settings.admission_strategy == "strict":
+        return StrictAdmissionController(planner, strict_config)
+    if settings.admission_strategy == "adaptive":
+        return AdaptiveAdmissionController(
+            planner,
+            AdaptiveAdmissionConfig(
+                strict=strict_config,
+                prompt_bucket_boundaries=(128, 512, 2048),
+                min_samples_per_bucket=3,
+                safety_margin_tokens=8,
+            ),
+        )
+    raise ValueError(
+        "admission_strategy must be 'strict' or 'adaptive'"
     )
 
 

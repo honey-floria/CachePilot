@@ -52,9 +52,44 @@ curl http://127.0.0.1:8000/v1/chat/completions \
   -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","messages":[{"role":"user","content":"Introduce yourself briefly."}],"max_tokens":128,"stream":false}'
 ```
 
-当前 Torch 后端每次执行一个请求；同时到达的请求可能收到 429。
+当前 Torch 后端每次执行一个请求；同时到达的请求可能收到 429。可用启动参数为：
+
+```bash
+python main.py --admission strict --scheduler fcfs --prefix-mode blind
+python main.py --admission adaptive --scheduler fcfs --prefix-mode blind
+```
+
+WFQ 与 Prefix-aware 现在已经接入 Gateway 调度队列；Prefix-aware 必须和 WFQ 一起使用：
+
+```bash
+python main.py --admission strict --scheduler wfq --prefix-mode blind
+python main.py --admission strict --scheduler wfq --prefix-mode aware
+```
+
+当前真实 API 请求契约尚未携带 tokenized prefix，因此 aware 模式只有在上层注入逻辑
+cache-hit token 后才会产生 cache boost；没有命中时仍按 WFQ 基线调度。
 它完成整段 `generate` 后才交付文本增量，因此 SSE 不是逐 token 实时 GPU 流式生成，
 不应用此路径评估真实流式 TTFT/TPOT。高吞吐服务后续可接入 vLLM。
+
+## 必要策略对照
+
+策略对照的原始证据必须在同一台单 GPU、同一模型/tokenizer revision、同一服务
+commit 中分别保存。每个策略先做至少一次 warm-up，再做至少三次测量；每次测量
+都保留 `manifest.json`、`trace.jsonl`、`requests.jsonl` 和分析器生成的
+`summary.json`。完成 Strict/Adaptive、FCFS/WFQ、prefix-blind/prefix-aware
+运行后，在仓库根目录执行：
+
+```bash
+python -m benchmarks.strategy_matrix \
+  --metric ttft_ms \
+  --output runs/required-matrix/matrix.json \
+  runs/required-matrix/<all-run-directories>
+```
+
+该命令会拒绝不同执行器、模型、硬件、代码版本或 trace 的混合结果，并拒绝少于
+三次非 warm-up 测量。当前 `TorchExecutor` 的能力矩阵声明为单请求 batch，因而
+不做 static-vs-continuous；只有执行器实际声明并实现两种 batch 语义时才加入该
+对照，不能用并发请求数替代 batch 支持。
 
 ## VS Code F5
 

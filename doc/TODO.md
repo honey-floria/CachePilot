@@ -60,9 +60,9 @@
 
 - [x] **环境脚本/notebook**：输出 GPU、显存、驱动、CUDA、Python、PyTorch、磁盘和模型版本。验收：环境不满足条件时提前失败或选择更小模型，凭据不进入日志。实现见 `benchmarks/gpu_environment.py` 与 `notebooks/colab_acceptance.ipynb`；单卡、显存、磁盘、Python 和固定 revision 在模型加载前门禁，安装和子进程输出按白名单脱敏。
 - [ ] **渐进压测**：已实现 `benchmarks/progressive_load.py`，可从短 prompt、单并发逐级增加上下文和并发，重复每个矩阵点并记录 OOM 与过载保护边界；报告只把全量重复成功点标为安全上限。待在真实单 GPU 环境生成 `runs/<run_id>/progressive_report.json` 和 `progressive_requests.jsonl` 后完成验收。
-- [ ] **必要对照**：Strict vs Adaptive、FCFS vs WFQ、prefix-blind vs prefix-aware；Torch 若真正支持两种 batch，再比较 static vs continuous。验收：同一执行器、模型和硬件内比较，warm-up 后至少重复三次。
-- [ ] **故障验证**：注入取消、断连、执行超时、执行器异常和 OOM，验证唯一终态与资源回收。
-- [ ] **Phase 1 出口**：API/SSE/取消/超时回归通过；Sim 与至少一个真实执行器端到端运行；原始记录和报告包含 TTFT、TPOT、吞吐、P99、公平性、拒绝率、KV 峰值和估算成本。未满足不得进入真实双卡实验。
+- [ ] **必要对照**：Strict vs Adaptive、FCFS vs WFQ、prefix-blind vs prefix-aware；Torch 若真正支持两种 batch，再比较 static vs continuous。已加入 `benchmarks/strategy_matrix.py` 对同执行器、模型、硬件、代码版本和 trace 的门禁，并强制每个策略 warm-up 后至少三次测量；待 GPU 服务器生成原始 runs 后完成验收。
+- [ ] **故障验证**：已加入 `benchmarks/chaos_validation.py`，注入取消、断连、执行超时、执行器异常和 OOM，并验证唯一终态与资源回收；待 GPU 服务器完成真实 OOM/执行器故障记录。
+- [ ] **Phase 1 出口**：已加入 `benchmarks/phase1_exit.py`，门禁 API/SSE/取消/超时、Sim 与实测执行器证据，以及 TTFT、TPOT、吞吐、P99、公平性、拒绝率、KV 峰值和估算成本字段；待 GPU 原始记录生成后验收。
 
 ## 3. 明确不在当前范围
 

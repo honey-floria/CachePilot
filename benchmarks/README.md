@@ -34,6 +34,37 @@ python benchmarks/analyze.py \
 executor；只改变 `control_variables.admission` 或 `control_variables.scheduler`，再比较
 同一组指标。
 
+## 必要策略矩阵
+
+GPU 服务器上完成一组矩阵后，用 `strategy_matrix.py` 做最终验收。每个策略至少保存
+三次非 warm-up run，并额外保存至少一次 `warmup=true` run；所有 run 必须使用相同的
+单卡、模型/tokenizer revision、Torch/Transformers、服务代码 commit 和 trace。脚本会
+拒绝混入不同硬件或执行器的结果，也会检查 Strict/Adaptive、FCFS/WFQ 和
+prefix-blind/prefix-aware 三组差异：
+
+```bash
+python -m benchmarks.strategy_matrix --metric ttft_ms \
+  --output runs/required-matrix/matrix.json \
+  runs/required-matrix/strict-fcfs-0 \
+  runs/required-matrix/strict-fcfs-1 \
+  runs/required-matrix/strict-fcfs-2 \
+  runs/required-matrix/adaptive-fcfs-0 \
+  runs/required-matrix/adaptive-fcfs-1 \
+  runs/required-matrix/adaptive-fcfs-2 \
+  runs/required-matrix/strict-wfq-0 \
+  runs/required-matrix/strict-wfq-1 \
+  runs/required-matrix/strict-wfq-2 \
+  runs/required-matrix/prefix-blind-0 \
+  runs/required-matrix/prefix-blind-1 \
+  runs/required-matrix/prefix-blind-2 \
+  runs/required-matrix/prefix-aware-0 \
+  runs/required-matrix/prefix-aware-1 \
+  runs/required-matrix/prefix-aware-2
+```
+
+当前 `TorchExecutor` 的能力声明是单请求 batch，因此不生成 static-vs-continuous
+结论；只有执行器能力矩阵明确声明同时支持两种 batch 语义时，才应新增该 pair。
+
 跨运行比较先经过能力语义门禁：
 
 ```bash

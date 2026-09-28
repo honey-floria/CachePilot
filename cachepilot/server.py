@@ -47,7 +47,14 @@ def check_cuda(device_index: int, dtype: str) -> str:
     return device
 
 
-def create_gpu_app(*, device_index: int = 0, dtype: str = "bfloat16"):
+def create_gpu_app(
+    *,
+    device_index: int = 0,
+    dtype: str = "bfloat16",
+    admission: str = "strict",
+    scheduler: str = "fcfs",
+    prefix_mode: str = "blind",
+):
     device = check_cuda(device_index, dtype)
     baseline = load_model_baseline(
         Path(__file__).resolve().parents[1] / "config" / "model.json"
@@ -69,7 +76,10 @@ def create_gpu_app(*, device_index: int = 0, dtype: str = "bfloat16"):
         GatewaySettings(
             model_id=baseline.model_id,
             context_limit=baseline.service_context_limit,
-            max_active_sequences=1,
+            max_active_sequences=8,
+            admission_strategy=admission,
+            scheduler_strategy=scheduler,
+            prefix_mode=prefix_mode,
         ),
         backend=executor,
         token_counter=executor,
@@ -82,6 +92,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--device", type=int, default=0, help="可见 GPU 的索引，默认 0")
     parser.add_argument("--dtype", choices=("bfloat16", "float16"), default="bfloat16")
+    parser.add_argument("--admission", choices=("strict", "adaptive"), default="strict")
+    parser.add_argument("--scheduler", choices=("fcfs", "wfq"), default="fcfs")
+    parser.add_argument("--prefix-mode", choices=("blind", "aware"), default="blind")
     parser.add_argument("--check", action="store_true", help="仅检查 CUDA，不下载模型")
     args = parser.parse_args(argv)
     if not 1 <= args.port <= 65535:
@@ -91,7 +104,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         if args.check:
             check_cuda(args.device, args.dtype)
             return
-        app = create_gpu_app(device_index=args.device, dtype=args.dtype)
+        app = create_gpu_app(
+            device_index=args.device,
+            dtype=args.dtype,
+            admission=args.admission,
+            scheduler=args.scheduler,
+            prefix_mode=args.prefix_mode,
+        )
     except (RuntimeError, OSError, ValueError) as exc:
         parser.exit(1, f"GPU 服务启动失败：{exc}\n")
     uvicorn.run(app, host=args.host, port=args.port, workers=1)
