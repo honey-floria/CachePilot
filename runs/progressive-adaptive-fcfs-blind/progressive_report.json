@@ -1,0 +1,208 @@
+{
+  "artifact_type": "cachepilot_progressive_load_report",
+  "schema_version": 1,
+  "created_at_utc": "2026-09-28T16:31:57.268450+00:00",
+  "host": {
+    "platform": "Linux-5.15.0-194-generic-x86_64-with-glibc2.35",
+    "python": "3.13.15"
+  },
+  "service": {
+    "base_url": "http://127.0.0.1:8000",
+    "ready_status": 200
+  },
+  "environment": {
+    "platform": {
+      "system": "Linux",
+      "machine": "x86_64",
+      "python": "3.13.15"
+    },
+    "python": {
+      "version": "3.13.15",
+      "implementation": "CPython"
+    },
+    "gpu_count": 1,
+    "gpus": [
+      {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 4080 SUPER",
+        "memory_total_bytes": 17171480576,
+        "memory_free_bytes": 15366881280,
+        "driver": "580.178.04"
+      }
+    ],
+    "cuda": "13.0",
+    "cuda_available": true,
+    "pytorch": "2.11.0+cu130",
+    "disk": {
+      "path": "/userhome/cs5/u3680889/CachePilot",
+      "free_bytes": 94809096192,
+      "total_bytes": 107374182400
+    },
+    "model": {
+      "id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "tokenizer_id": "Qwen/Qwen2.5-0.5B-Instruct",
+      "tokenizer_revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+      "context_limit": 8192
+    }
+  },
+  "configuration": {
+    "contexts": [
+      32,
+      128,
+      512,
+      2048
+    ],
+    "concurrencies": [
+      1,
+      2,
+      4
+    ],
+    "repetitions": 3,
+    "max_tokens": 16,
+    "warmup": true
+  },
+  "steps": 36,
+  "matrix_points": [
+    {
+      "context_tokens_target": 32,
+      "observed_prompt_tokens": null,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 3
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 32,
+      "observed_prompt_tokens": null,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 6
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 32,
+      "observed_prompt_tokens": null,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 12
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 128,
+      "observed_prompt_tokens": null,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 3
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 128,
+      "observed_prompt_tokens": null,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 6
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 128,
+      "observed_prompt_tokens": null,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 12
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 512,
+      "observed_prompt_tokens": null,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 3
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 512,
+      "observed_prompt_tokens": null,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 6
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 512,
+      "observed_prompt_tokens": null,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 12
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 2048,
+      "observed_prompt_tokens": null,
+      "concurrency": 1,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 3
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 2048,
+      "observed_prompt_tokens": null,
+      "concurrency": 2,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 6
+      },
+      "safe": false
+    },
+    {
+      "context_tokens_target": 2048,
+      "observed_prompt_tokens": null,
+      "concurrency": 4,
+      "completed_repetitions": 3,
+      "required_repetitions": 3,
+      "counts": {
+        "rejected": 12
+      },
+      "safe": false
+    }
+  ],
+  "safety": {
+    "definition": "safe means every repeated request at a matrix point finished successfully with no protection, OOM, timeout, or failure",
+    "safe_context_tokens_observed": null,
+    "safe_concurrency_at_safe_context": null,
+    "first_overload_protection_point": null,
+    "first_oom_point": null,
+    "capacity_conclusion": "bounded repeated matrix only; extrapolation beyond tested points is invalid"
+  }
+}
