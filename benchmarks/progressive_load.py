@@ -244,9 +244,17 @@ def run(args: argparse.Namespace) -> int:
         for failure in failures:
             print(f"- {failure}", file=sys.stderr)
         return 2
-    status, ready, _ = _http_json(
-        _url(args.base_url, "/readyz"), timeout_s=args.timeout
-    )
+    try:
+        status, ready, _ = _http_json(
+            _url(args.base_url, "/readyz"), timeout_s=min(args.timeout, 10.0)
+        )
+    except (URLError, TimeoutError, OSError) as exc:
+        print(
+            f"service is unreachable at {args.base_url}; start the GPU service first "
+            f"({exc})",
+            file=sys.stderr,
+        )
+        return 2
     if status != 200 or ready.get("status") != "ready":
         print(f"service is not ready (status={status})", file=sys.stderr)
         return 2
