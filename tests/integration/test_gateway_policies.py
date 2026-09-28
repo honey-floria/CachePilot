@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from dataclasses import replace
 
+import anyio
 from fastapi.testclient import TestClient
 
 from cachepilot.cache.prefix_index import PrefixScopeKey
@@ -179,6 +180,43 @@ class GatewayPolicyTests(unittest.TestCase):
 
 
 class GatewaySchedulingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_disconnect_cancel_scope_releases_slot_and_recovers(self):
+        class ConnectedClient:
+            async def is_disconnected(self):
+                return False
+
+        backend = OutputBackend()
+        backend.delay = 10
+        runtime = create_app(
+            config(), backend=backend, token_counter=TokenCounter()
+        ).state.gateway_runtime
+        prepared = runtime.prepare(payload(stream=True), headers("disconnect"))
+
+        async def consume():
+            async for chunk in runtime.stream(prepared, ConnectedClient()):
+                self.assertIsInstance(chunk, str)
+
+        with anyio.fail_after(2):
+            async with anyio.create_task_group() as group:
+                group.start_soon(consume)
+                while not backend.active:
+                    await anyio.sleep(0)
+                group.cancel_scope.cancel()
+
+        snapshot = runtime.registry.get("disconnect")
+        self.assertEqual(snapshot.state.value, "CANCELLED")
+        self.assertEqual(sum(event.state.value == "CANCELLED" for event in snapshot.events), 1)
+        self.assertEqual(backend.cancel_reasons["disconnect"], "disconnect")
+        self.assertEqual(runtime.admission.snapshot().reserved_blocks, 0)
+        self.assertEqual(runtime.admission.snapshot().active_sequences, 0)
+        self.assertEqual(runtime._executing_requests, set())
+        self.assertEqual(runtime._schedule_events, {})
+        self.assertEqual(backend.active, 0)
+        backend.delay = 0
+        recovery = runtime.prepare(payload(), headers("recovery", deadline=1000))
+        await runtime.complete(recovery)
+        self.assertEqual(runtime.registry.get("recovery").state.value, "FINISHED")
+
     async def test_cancelled_waiting_stream_never_starts_backend(self):
         class ConnectedClient:
             async def is_disconnected(self):

@@ -683,4 +683,123 @@ tokenized prefix 的 tenant/version 隔离、实际调度 boost、FCFS/WFQ 顺�
 语法检查及“不足证据不能通过出口”的回归也通过。
 
 这些是代码和实验流程的本地验证，不是锁定 Python 3.13.15 的 GPU 复验。
-第二轮 Colab 尚未执行，TODO 的必要对照与 Phase 1 出口继续保持未完成。
+当时第二轮 Colab 尚未执行；后续实测结果与出口状态见第 15 节。
+
+## 15. 第二轮 Colab：策略覆盖通过，SSE 断连恢复阻塞出口
+
+### 15.1 证据与环境
+
+证据目录：`runs/20260928T210520-d719e8/`；原始文件保持不变。
+归档：`runs/20260928T210520-d719e8-evidence.zip`，SHA256：
+`7c4b4921ca084b7629eaff8a4fda608462fc8a82f6fd0b7248bd6da99752679b`。
+
+- 399 个归档文件 checksum 全部匹配，107 个源码快照与 `source.json` 匹配。
+- 重算 25 份 summary（12 warm-up、12 measured、1 Sim），仅归一化迁移后的
+  source 路径，结果全部一致。源码记录为 `09d059a0bf11c81b81d6824ee875039235a82a9c`、
+  `git_dirty=true`，所以实际执行版本以快照/hash 为准，不能只引用 commit。
+- 本轮实际硬件是 **A100-SXM4-40GB**，不是上一轮 T4；dtype 为原生支持的
+  **bfloat16**。Python 3.13.15、torch 2.11.0+cu130、CUDA 13.0、driver 580.82.07；
+  Qwen/Qwen2.5-0.5B-Instruct revision 为 `7ae557604adf67be50417f59c2c2f167def9a775`。
+  本轮不能验收 T4 的 FP16 分支，也不能将跨轮加速归因于策略修复。
+- 命令状态中仅 `chaos-gpu`（1）和 `phase1-gate`（2）非零。CPU/API、矩阵校验、
+  渐进压测、控制面 chaos 和 Sim 均通过。最终状态为渐进 PASS、必要对照 PASS、
+  故障 FAIL、Phase 1 NOT_PASSED；不是全部验证成功。
+
+### 15.2 渐进压测：验收的是配置下的保护边界
+
+四种策略各 558 请求，均为 258 成功、300 次 HTTP 429：135 次 `kv_capacity`、
+93 次 `context_limit_exceeded`、72 次 `max_active_sequences`；没有自然 OOM、
+执行器失败或请求超时。每个矩阵点重复 3 次。
+
+| 实际 prompt tokens | 全重复成功的最大已测并发 |
+|---|---:|
+| 62 / 158 / 542 | 8 |
+| 2078 | 2 |
+| 4126 | 1 |
+| 8222 | 无；超过 8192 context limit |
+
+这里是逻辑 KV 配额、active 上限及上下文保护下的安全点，并非 A100 40GB 的
+自然物理显存极限。渐进 workload 与正式短输出 workload 不同，不能用这里策略
+边界相同否定正式矩阵中的 Adaptive 收益。
+
+### 15.3 必要对照：覆盖已成立，收益须分别解释
+
+协议为第 14.2 节的 closed-loop waves，每策略 3 次正式重复、每次 64 请求，
+每次先串行 warm-up；单执行槽。以下均为三次正式重复的中位数：
+
+| 策略 | 完成/64 | 拒绝率 | TTFT P95 ms | Total P99 ms | 窗口 tok/s | 单请求逻辑 KV 峰值 blocks | 调度等待 P95 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Strict FCFS blind | 43 | 32.8125% | 1054.21 | 4199.28 | 35.27 | 131 | 3176.97 |
+| Adaptive FCFS blind | 64 | 0% | 1066.64 | 4492.67 | 34.74 | 70 | 3554.88 |
+| Strict WFQ blind | 44 | 31.25% | 1104.27 | 4384.93 | 34.88 | 131 | 3233.12 |
+| Strict WFQ aware | 45 | 29.6875% | 1156.40 | 4539.66 | 34.93 | 131 | 4127.98 |
+
+1. **Adaptive 的有效收益是准入和逻辑预留，不是已证明的吞吐提升。** 三次均
+   64/64 完成；每个请求非 fallback、输出估计 45 tokens，对比预算 1024/128
+   都有缩减。实际输出固定为 32 个 1-token 和 32 个 37-token 请求；warm-up
+   终于提供了明显短于预算的历史。Strict FCFS 的 20/21/22 个拒绝全部为
+   `kv_capacity`，不再是第一轮的 active 上限主导。单请求逻辑 KV 峰值降低
+   46.6%，但不等于物理显存节省 46.6%。吞吐中位数下降约 1.5%，Total P99
+   增加约 7.0%；更多准入请求共用一个执行槽，不能承诺同时降低排队延迟。
+2. **WFQ 机制已参与排队，但未证明显著性能或公平性优势。** 相对 FCFS，
+   吞吐约下降 1.1%、TTFT P95 增加约 4.7%；token Jain 中位数从 0.9920
+   到 0.9948。等权两租户、小样本且接纳集合不同，不足以证明不均衡负载下的优势。
+3. **Prefix-aware 链路已闭环，但没有可信的加速结论。** 三次分别 45/47/43
+   个逻辑命中、1/1/2 次实际 dispatch boost；blind 同样观测命中但不 boost。
+   aware 吞吐中位数仅比 WFQ blind 高约 0.16%，TTFT P95 增加约 4.7%，
+   调度等待 P95 增加约 27.7%。boost 样本很少，物理 prefix hit 仍为 null，
+   Torch 没有据此跳过 prefill，不能宣传 KV 复用加速。
+
+所有 run 满足至少 24 完成、拒绝率不超过 50%、可观测排队、Adaptive 学习缩减、
+aware 命中及 boost 的覆盖门槛。因此“必要对照 PASS”指实验覆盖和证据有效，
+不代表三种优化均有正收益。各策略成功请求集合、输出 token 构成不同，以上
+端到端结果包含准入效果，不能当作固定成功集合的纯调度消融。
+TTFT/TPOT 仍为 Torch 整段生成后的交付口径；成本字段存在但未配 GPU 价格，
+estimated_cost=null；static/continuous 对照为 N/A。
+
+### 15.4 故障失败：资源账本归零不等于服务已恢复
+
+`chaos-gpu.json` 只有两个 case，因为断连失败后测试立即中止：
+
+- cancel：唯一 CANCELLED，reserved/active 为 0，恢复 HTTP 200，PASS。
+- disconnect：同样唯一 CANCELLED，reserved/active 为 0，CUDA allocated
+  回到基线 1,005,890,560 bytes，executor cancel reason 为 disconnect；
+  **但恢复请求 HTTP 504，FAIL**。
+- timeout、exception、OOM：本轮未执行，不得引用第一轮 PASS 冒充本轮通过。
+
+对照运行快照发现 `GatewayRuntime.stream()` 的 finally 在释放执行槽前先
+`await asyncio.gather(producer, ...)`。Starlette/AnyIO 的断连 cancel scope
+会在清理 await 处继续触发取消，跳过后续 `_release_execution()`。cancel 路径
+已经释放 admission，因此看见 reserved=0、active=0、显存回基线仍无法发现
+残留执行槽；单槽服务的下一请求只能等到 deadline，返回 504。
+
+本地新增 AnyIO cancel-scope 回归，在未修复代码上稳定复现：断连请求已 CANCELLED、
+admission 已归零，但 `_executing_requests` 仍含 `disconnect`。这与 GPU 恢复
+504 的表现吻合；原始 GPU 证据没有记录私有槽集合，槽残留的直接证据来自本地复现。
+
+### 15.5 本地修复与下一步复验
+
+- SSE producer 清理使用 shielded cancel scope，外层 finally 无条件释放
+  admission、Scheduler 槽及等待事件，避免清理 await 被取消后跳过释放。
+- 新增测试验证断连唯一终态、backend cancel reason、资源与槽/事件归零，
+  然后新请求 FINISHED；修复前失败、修复后通过。
+- GPU chaos 新增恢复请求完整 query、恢复后的 executing/request-event 列表，
+  要求恢复 FINISHED 且列表为空，防止只看 admission 和显存就宣布恢复。
+- 本地 Python 3.12.13：205 passed、1 skipped（沙箱禁止 socket bind）；Ruff 和
+  `git diff --check` 通过。这不是 Python 3.13.15/CUDA 的复验。
+
+下一步先同步新代码、在 Colab 创建新 session，完成源码准备/依赖和辅助函数单元，
+在跑长矩阵前可插入以下快速检查（只运行一次；输出存在时不要覆盖旧证据）：
+
+```python
+stop_server()
+command([PY, "-m", "benchmarks.colab_phase1", "gpu-chaos",
+         "--dtype", DTYPE, "--output", OUT / "chaos-gpu-precheck.json"],
+        "chaos-gpu-precheck", timeout=1800)
+```
+
+必须五个 case 全部 PASS、恢复 HTTP 200/FINISHED 且槽/事件列表为空。预检查
+通过后继续按 notebook 顺序跑完本轮完整验证和归档，以同一新源码形成最终出口
+证据；不要把旧矩阵和新故障报告手工拼成同一版本。当前 TODO 可关闭渐进压测和
+必要对照；故障验证与 Phase 1 出口保持未完成。若再出现失败，保留新增恢复 query
+与槽列表，继续定位，不以延长 deadline 或跳过测试替代修复。

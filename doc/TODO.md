@@ -63,10 +63,10 @@ Colab 完整验证入口：[colab_phase1_matrix.ipynb](../notebooks/colab_phase1
 四项的验收依据；脚本或 notebook 已实现不等于 GPU 验收已通过，不自动勾选。
 
 - [x] **环境脚本/notebook**：输出 GPU、显存、驱动、CUDA、Python、PyTorch、磁盘和模型版本。验收：环境不满足条件时提前失败或选择更小模型，凭据不进入日志。实现见 `benchmarks/gpu_environment.py` 与 `notebooks/colab_acceptance.ipynb`；单卡、显存、磁盘、Python 和固定 revision 在模型加载前门禁，安装和子进程输出按白名单脱敏。
-- [ ] **渐进压测**：已实现 `benchmarks/progressive_load.py`，可从短 prompt、单并发逐级增加上下文和并发，重复每个矩阵点并记录 OOM 与过载保护边界；报告只把全量重复成功点标为安全上限。待在真实单 GPU 环境生成 `runs/<run_id>/progressive_report.json` 和 `progressive_requests.jsonl` 后完成验收。
-- [ ] **必要对照**：Strict vs Adaptive、FCFS vs WFQ、prefix-blind vs prefix-aware；Torch 若真正支持两种 batch，再比较 static vs continuous。已加入 `benchmarks/strategy_matrix.py` 对同执行器、模型、硬件、代码版本和 trace 的门禁，并强制每个策略 warm-up 后至少三次测量；待 GPU 服务器生成原始 runs 后完成验收。
-- [ ] **故障验证**：已加入 `benchmarks/chaos_validation.py`，注入取消、断连、执行超时、执行器异常和 OOM，并验证唯一终态与资源回收；待 GPU 服务器完成真实 OOM/执行器故障记录。
-- [ ] **Phase 1 出口**：已加入 `benchmarks/phase1_exit.py`，门禁 API/SSE/取消/超时、Sim 与实测执行器证据，以及 TTFT、TPOT、吞吐、P99、公平性、拒绝率、KV 峰值和估算成本字段；待 GPU 原始记录生成后验收。
+- [x] **渐进压测**：`runs/20260928T210520-d719e8/progressive/` 四策略各 558 请求、每点重复 3 次，确认逻辑配额/上下文/并发保护下的安全点；没有触及自然物理 OOM，不宣称 A100 显存容量极限。见 [第二轮测试历程](acceptance/phase1-test-history-20260928.md#152-渐进压测验收的是配置下的保护边界)。
+- [x] **必要对照**：同轮 A100、同模型/源码/trace，四策略各 warm-up 后 3 次正式测量，策略触发覆盖全部通过。Adaptive 降低拒绝率和逻辑预留；WFQ/prefix-aware 未证明性能优势，static/continuous 为 N/A。证据见 `runs/20260928T210520-d719e8/matrix/` 和 [第二轮分析](acceptance/phase1-test-history-20260928.md#153-必要对照覆盖已成立收益须分别解释)。
+- [ ] **故障验证**：第二轮 cancel PASS，disconnect 的资源账本/显存已回收但恢复请求 504，后续 timeout/exception/OOM 未执行。本地已复现并修复 SSE 清理被取消导致执行槽残留，待新版本 Colab 五类故障全部复验；见 [问题闭环](acceptance/phase1-test-history-20260928.md#154-故障失败资源账本归零不等于服务已恢复)。
+- [ ] **Phase 1 出口**：第二轮 `Phase1出口=NOT_PASSED`，门禁因 GPU chaos 未通过正确阻断。待修复后同一新源码完成全流程和归档，不混用旧矩阵与新故障报告。
 
 ## 3. 明确不在当前范围
 

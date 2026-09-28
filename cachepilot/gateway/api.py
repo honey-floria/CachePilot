@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, Mapping, Optional
 
+import anyio
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
@@ -584,12 +585,15 @@ class GatewayRuntime:
             )
             yield "data: [DONE]\n\n"
         finally:
-            if producer is not None:
-                if not producer.done():
-                    producer.cancel()
-                await asyncio.gather(producer, return_exceptions=True)
-            self.admission.release(request.request_id)
-            self._release_execution(request.request_id)
+            try:
+                with anyio.CancelScope(shield=True):
+                    if producer is not None:
+                        if not producer.done():
+                            producer.cancel()
+                        await asyncio.gather(producer, return_exceptions=True)
+            finally:
+                self.admission.release(request.request_id)
+                self._release_execution(request.request_id)
 
     async def _produce_stream(
         self,

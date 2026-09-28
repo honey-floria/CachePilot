@@ -311,11 +311,26 @@ def gpu_chaos(output: Path, dtype: str) -> None:
             )
             recovery = post(f"{request_id}-recovery", tokens=8)
             case["recovery_http_status"] = recovery.status_code
+            case["recovery_query"] = runtime.query(
+                f"{request_id}-recovery", "team-a"
+            )
+            with runtime._schedule_lock:
+                case["executing_requests_after_recovery"] = sorted(
+                    runtime._executing_requests
+                )
+                case["schedule_events_after_recovery"] = sorted(
+                    runtime._schedule_events
+                )
             if name in {"cancel", "disconnect", "timeout"}:
                 expected_reason = "explicit" if name == "cancel" else name
                 if case["executor_cancel_reason"] != expected_reason:
                     case["status"] = "FAIL"
-            if recovery.status_code != 200:
+            if (
+                recovery.status_code != 200
+                or case["recovery_query"]["state"] != "FINISHED"
+                or case["executing_requests_after_recovery"]
+                or case["schedule_events_after_recovery"]
+            ):
                 case["status"] = "FAIL"
             report["cases"].append(case)
             write_json(output, report)
