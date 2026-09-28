@@ -1,0 +1,54 @@
+{
+  "artifact_type": "cachepilot_chaos_validation",
+  "schema_version": 1,
+  "status": "PASS",
+  "cases": [
+    {
+      "request_id": "chaos-cancel",
+      "terminal_state": "CANCELLED",
+      "terminal_transitions": 1,
+      "reserved_blocks": 0,
+      "active_sequences": 0,
+      "http_status": null,
+      "error_code": null
+    },
+    {
+      "request_id": "chaos-disconnect",
+      "terminal_state": "CANCELLED",
+      "terminal_transitions": 1,
+      "reserved_blocks": 0,
+      "active_sequences": 0,
+      "http_status": null,
+      "error_code": null
+    },
+    {
+      "request_id": "chaos-timeout",
+      "terminal_state": "TIMED_OUT",
+      "terminal_transitions": 1,
+      "reserved_blocks": 0,
+      "active_sequences": 0,
+      "http_status": 504,
+      "error_code": "deadline_exceeded"
+    },
+    {
+      "request_id": "chaos-exception",
+      "terminal_state": "FAILED",
+      "terminal_transitions": 1,
+      "reserved_blocks": 0,
+      "active_sequences": 0,
+      "http_status": 500,
+      "error_code": "executor_failed"
+    },
+    {
+      "request_id": "chaos-oom",
+      "terminal_state": "FAILED",
+      "terminal_transitions": 1,
+      "reserved_blocks": 0,
+      "active_sequences": 0,
+      "http_status": 500,
+      "error_code": "executor_oom"
+    }
+  ],
+  "validated_in_process": true,
+  "note": "OOM case uses an injected CUDA out-of-memory exception; repeat on GPU for hardware evidence."
+}
